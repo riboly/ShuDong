@@ -30,8 +30,8 @@
 //  hot-updated bundle):
 //    * hide-important-tip — drops the pinned "重要提示" row (friendId "-1")
 //      from the conversation list on the home page.
-//    * show-friend-id     — appends the real friend id to every name in the
-//      conversation list, reusing NameText's own `appends` prop.
+//    * remove-friend-id   — removes the optional real friend id suffix from
+//      conversation-list names while keeping the full id on profile screens.
 //
 
 #import <Foundation/Foundation.h>
@@ -44,7 +44,7 @@ static NSString *const kJSBundleFile = @"main.jsbundle";
 static NSString *const kBackupSuffix = @".sdorig";
 
 // Bump whenever the patch table changes so cached output is regenerated.
-static NSString *const kPatchVersion = @"6";
+static NSString *const kPatchVersion = @"7";
 
 // Hot-update bundles inside the app container, newest-first.  Relative to
 // <Documents>.  __hvdown_old__ is the rollback copy the app keeps around.
@@ -84,18 +84,17 @@ static const SDPatch kPatches[] = {
         "this.dataSource=this.dataSource.cloneWithRows([].concat(babelHelpers.toConsumableArray(this.state.userListData)).filter(function(__sd){return!__sd||\"-1\"!==__sd.friendId}))",
     },
 
-    // 2) Conversation list rows: show the real friend id next to the name.
+    // 2) Conversation list rows: remove the optional real friend id suffix.
     //
     //    UserListView.renderRowMiddleBlock(e) renders
     //      createElement(a.NameText,{userid:e.friendId,imageFontSize:15,...})
     //
-    //    NameText already supports an `appends` prop which it concatenates onto
-    //    the resolved display name (myTextValue: this.state.name + this.appends),
-    //    so we only have to pass it.
+    //    This reverses the earlier show-friend-id patch when upgrading an
+    //    already-patched hot-update bundle.
     {
-        "show-friend-id",
-        "a.NameText,{userid:e.friendId,imageFontSize:15,style:d.rowUserNameText,numberOfLines:1,",
+        "remove-friend-id",
         "a.NameText,{userid:e.friendId,appends:\" [\"+e.friendId+\"]\",imageFontSize:15,style:d.rowUserNameText,numberOfLines:1,",
+        "a.NameText,{userid:e.friendId,imageFontSize:15,style:d.rowUserNameText,numberOfLines:1,",
     },
 
     // 3) Friend profile: show the complete id (the stock UI truncates it to
@@ -115,7 +114,15 @@ static const SDPatch kPatches[] = {
         "{type:\"bar\"},{type:\"pbtn\",style:{marginTop:8},color:s.theme.deepGreen2Trans6,textColor:s.theme.white,text:\"添加聊天\",onPress:function(){return e.sdAddChatDiag()}},e.showCmdBall||e.pkgvv===e.version||e.isTempUserid()?{type:\"btn\",label:(0,s.tr)(\"Add Friends\"),value:\" \",onPress:function(){return e.addNewFriendDiag()}}:null",
     },
 
-    // 5) AboutMeView listens for this event and performs the native clipboard
+    // 5) Settings page: expose this account's chat id directly below the
+    // account row.  It uses the same copy event as the friend profile.
+    {
+        "settings-own-chat-id",
+        "{type:\"btn\",name:\"Account\",label:(0,s.tr)(\"Account ID\"),value:i?\" \":e.account,onPress:function(n,r){t===e.userid&&e.setAccount(n)}},{type:\"bar\"},",
+        "{type:\"btn\",name:\"Account\",label:(0,s.tr)(\"Account ID\"),value:i?\" \":e.account,onPress:function(n,r){t===e.userid&&e.setAccount(n)}},{type:\"btn\",name:\"ChatId\",label:\"聊天ID\",value:e.userid,onPress:function(){e.emit(\"sdCopyFriendId\",e.userid)}},{type:\"bar\"},",
+    },
+
+    // 6) AboutMeView listens for this event and performs the native clipboard
     // call, keeping the app-module patch independent of RN module numbering.
     {
         "profile-copy-event",
@@ -129,7 +136,7 @@ static const SDPatch kPatches[] = {
         "l.apps.unon(\"notificationPermissionChanged\",this.notificationPermissionChanged),l.apps.unon(\"userChanged\",this.onUserChanged),l.apps.unon(\"sdCopyFriendId\",this.sdCopyFriendId)},onShowBackgroundImageToggled:function(){this.setListData(l.apps.changeAllListData(this.listData))},sdCopyFriendId:function(e){i.Clipboard.setString(e),l.apps.tip(\"ID已复制\")},setListData:function(e){",
     },
 
-    // 6) Direct text sender and its two-input dialog.  This mirrors the
+    // 7) Direct text sender and its two-input dialog.  This mirrors the
     // parameters used by InteractView for a normal one-to-one conversation.
     {
         "direct-chat-helper",

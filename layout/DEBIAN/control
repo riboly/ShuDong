@@ -1,11 +1,11 @@
 Package: com.riboly.shudong
 Name: ShuDong Enhancer
-Version: 1.0.2
+Version: 1.0.3
 Section: Tweaks
 Depends: ellekit | mobilesubstrate
 Architecture: iphoneos-arm64
 Maintainer: riboly
 Author: riboly
-Description: Enhancement tweak for 树洞 (co.whou.pick): shows full friend ids with copy support, adds direct chat sending, removes the pinned tip row, and appends ids in the conversation list.
+Description: Enhancement tweak for 树洞 (co.whou.pick): shows full friend ids with copy support, exposes the account chat id, adds direct chat sending, and removes the pinned tip row.
 Homepage: https://github.com/riboly/ShuDong
 Tag: role::hacker
