@@ -1,0 +1,54 @@
+name: Build ShuDong dylib
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (macOS / iphoneos SDK)
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install ldid
+        run: brew install ldid
+
+      - name: Build dylib
+        run: bash build.sh
+
+      - name: Inspect result
+        run: |
+          ls -la build
+          file build/ShuDong.dylib
+          otool -L build/ShuDong.dylib
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShuDong-dylib
+          path: |
+            build/ShuDong.dylib
+            build/ShuDong.zip
+          if-no-files-found: error
+
+      - name: Publish release on tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/ShuDong.dylib
+            build/ShuDong.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
