@@ -44,7 +44,7 @@ static NSString *const kJSBundleFile = @"main.jsbundle";
 static NSString *const kBackupSuffix = @".sdorig";
 
 // Bump whenever the patch table changes so cached output is regenerated.
-static NSString *const kPatchVersion = @"5";
+static NSString *const kPatchVersion = @"6";
 
 // Hot-update bundles inside the app container, newest-first.  Relative to
 // <Documents>.  __hvdown_old__ is the rollback copy the app keeps around.
@@ -96,6 +96,45 @@ static const SDPatch kPatches[] = {
         "show-friend-id",
         "a.NameText,{userid:e.friendId,imageFontSize:15,style:d.rowUserNameText,numberOfLines:1,",
         "a.NameText,{userid:e.friendId,appends:\" [\"+e.friendId+\"]\",imageFontSize:15,style:d.rowUserNameText,numberOfLines:1,",
+    },
+
+    // 3) Friend profile: show the complete id (the stock UI truncates it to
+    // six characters) and add a copy button handled by AboutMeView.
+    {
+        "profile-full-friend-id",
+        "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t.slice(0,6)}",
+        "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t},{type:\"pbtn\",style:{marginTop:5},color:s.theme.deepGreen2Trans6,textColor:s.theme.white,text:\"\\u590d\\u5236ID\",onPress:function(){e.emit(\"sdCopyFriendId\",t)}}",
+    },
+
+    // 4) Settings page: insert an Add Chat button before notification
+    // settings.  The callback opens a two-field dialog and calls the helper
+    // inserted below, which uses the app's own sendShareReply pipeline.
+    {
+        "settings-add-chat-button",
+        "{type:\"bar\"},e.showCmdBall||e.pkgvv===e.version||e.isTempUserid()?{type:\"btn\",label:(0,s.tr)(\"Add Friends\"),value:\" \",onPress:function(){return e.addNewFriendDiag()}}:null",
+        "{type:\"bar\"},{type:\"pbtn\",style:{marginTop:8},color:s.theme.deepGreen2Trans6,textColor:s.theme.white,text:\"添加聊天\",onPress:function(){return e.sdAddChatDiag()}},e.showCmdBall||e.pkgvv===e.version||e.isTempUserid()?{type:\"btn\",label:(0,s.tr)(\"Add Friends\"),value:\" \",onPress:function(){return e.addNewFriendDiag()}}:null",
+    },
+
+    // 5) AboutMeView listens for this event and performs the native clipboard
+    // call, keeping the app-module patch independent of RN module numbering.
+    {
+        "profile-copy-event",
+        "componentDidMount:function(){l.apps.on(\"statusBarDiffChanged\",this.onStatusBarDiffChanged),l.apps.on(\"showBackgroundImageToggled\",this.onShowBackgroundImageToggled),l.apps.on(\"aboutMeViewLoaded_\"+this.props.userid,this.onAboutMeViewLoaded),l.apps.on(\"profileLoaded_\"+this.props.userid,this.onProfileLoaded),l.apps.on(\"notificationPermissionChanged\",this.notificationPermissionChanged),l.apps.on(\"userChanged\",this.onUserChanged)}",
+        "componentDidMount:function(){l.apps.on(\"statusBarDiffChanged\",this.onStatusBarDiffChanged),l.apps.on(\"showBackgroundImageToggled\",this.onShowBackgroundImageToggled),l.apps.on(\"aboutMeViewLoaded_\"+this.props.userid,this.onAboutMeViewLoaded),l.apps.on(\"profileLoaded_\"+this.props.userid,this.onProfileLoaded),l.apps.on(\"notificationPermissionChanged\",this.notificationPermissionChanged),l.apps.on(\"userChanged\",this.onUserChanged),l.apps.on(\"sdCopyFriendId\",this.sdCopyFriendId)}",
+    },
+
+    {
+        "profile-copy-method-and-unsubscribe",
+        "l.apps.unon(\"notificationPermissionChanged\",this.notificationPermissionChanged),l.apps.unon(\"userChanged\",this.onUserChanged)},onShowBackgroundImageToggled:function(){this.setListData(l.apps.changeAllListData(this.listData))},setListData:function(e){",
+        "l.apps.unon(\"notificationPermissionChanged\",this.notificationPermissionChanged),l.apps.unon(\"userChanged\",this.onUserChanged),l.apps.unon(\"sdCopyFriendId\",this.sdCopyFriendId)},onShowBackgroundImageToggled:function(){this.setListData(l.apps.changeAllListData(this.listData))},sdCopyFriendId:function(e){i.Clipboard.setString(e),l.apps.tip(\"ID已复制\")},setListData:function(e){",
+    },
+
+    // 6) Direct text sender and its two-input dialog.  This mirrors the
+    // parameters used by InteractView for a normal one-to-one conversation.
+    {
+        "direct-chat-helper",
+        "e.sendBottleReply=function(t,n,r,i,o){",
+        "e.sendDirectText=function(t,n){return new Promise(function(r,i){t=(t||\"\").trim(),n=(n||\"\").trim();if(!t||!n)return void i(\"empty\");var o=e.getChatSession(t,e.userid),a=e.getFid(t,e.userid,o);Promise.all([e.getRelationShip(t),e.getProfileK(t,\"forbid\"),e.getMsgscnt(t,e.userid),e.isPeopleApproved(t)]).then(function(i){var s=i[0]||{},u=i[1]||e.CONS_FORBID_NORMAL,d=i[2],c=i[3];if(e.isUserForbided(u))throw\"forbidden\";if(s.blocked)throw\"blocked\";var f=s.isFriend?1:0,l=s.isStared?1:0,h=s.isFollowed?1:0,m=s.isCut,v=e.getNewMsgId(t,o);return e.sendShareReply(\"newMsg\",{shareId:t,msgid:v,msgscnt:d,fromId:e.userid,toId:t,chatSession:o,shareFrom:t,friendId:t,type:e.CONS_MSG_TYPE_TEXT,data:n,category:2,ftype:1,fid:a,seqi:0,atime:0,isFriend:f,userid:l?e.userid:\"3:\"+e.userid,isPraised:0,isStared:l,utab:h?1:2,isApproved:!!c,isCut:m})}).then(r,i)})},e.sdAddChatDiag=function(){var t=e; e.diag({header:\"添加聊天\",content:\"输入好友真实ID和消息内容\",textInputs:[{placeholder:\"好友真实ID\",value:\"\",maxLength:80},{placeholder:\"消息内容\",value:\"\",maxLength:2500}],buttons:[{text:(0,s.tr)(\"Cancel\"),onPress:function(){return e.closeDiag()}},{text:\"发送\",onPress:function(n){if(!n.isProgressing){var i=(n.state.textInputs[0].value||\"\").trim(),o=(n.state.textInputs[1].value||\"\").trim();if(i&&o)return n.progressing(!0),void t.sendDirectText(i,o).then(function(){n.progressing(!1),t.closeDiag(function(){t.tip(\"消息已发送\")})})[\"catch\"](function(e){n.progressing(!1),n.setState({infoTip:\"发送失败: \"+e})});n.setState({infoTip:\"请输入好友真实ID和消息内容\"})}}}]})},e.sendBottleReply=function(t,n,r,i,o){",
     },
 };
 
@@ -603,4 +642,3 @@ __attribute__((constructor)) static void sd_init(void) {
                       (unsigned long)live, (unsigned long)gRedirects.count]);
     }
 }
-
