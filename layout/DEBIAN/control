@@ -1,0 +1,11 @@
+Package: com.riboly.shudong
+Name: ShuDong Enhancer
+Version: 1.0.0
+Section: Tweaks
+Depends: ellekit | mobilesubstrate
+Architecture: iphoneos-arm64
+Maintainer: riboly
+Author: riboly
+Description: Enhancement tweak for 树洞 (co.whou.pick): removes the pinned "Important Tip" row from the home conversation list and appends each friend's real id to their name.
+Homepage: https://github.com/riboly/ShuDong
+Tag: role::hacker

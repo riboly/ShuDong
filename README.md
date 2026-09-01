@@ -37,38 +37,62 @@ JavaScript 绘制，所以 hook UIKit 没有意义。插件的做法是：
 ## 编译
 
 推送到 `main` / `master`，或在 Actions 页面手动 `workflow_dispatch`，产物在 artifact
-**ShuDong-dylib** 里（`ShuDong.dylib` 与 `ShuDong.zip`）。打 `v*` tag 会同时发一个 Release。
+**ShuDong-dylib** 里：
+
+| 文件 | 用途 |
+| --- | --- |
+| `ShuDong.dylib` | 裸 dylib（TrollFools 注入用，需要已脱壳的 app） |
+| `ShuDong_1.0.0_iphoneos-arm64e.deb` | **roothide Dopamine**（推荐） |
+| `ShuDong_1.0.0_iphoneos-arm64.deb` | rootless Dopamine / ElleKit（`/var/jb`） |
+
+打 `v*` tag 会同时发一个 Release。
 
 本地（需 macOS + Xcode）：
 
 ```bash
-brew install ldid
-bash build.sh          # 输出 build/ShuDong.dylib
+brew install ldid dpkg
+bash build.sh          # 输出 build/ 下的 dylib 与两个 deb
 ```
 
 ## 安装
 
-### TrollFools（推荐，无需越狱环境依赖）
+### 越狱环境（推荐，deb）
 
-1. 下载 artifact 里的 `ShuDong.dylib`；
-2. 传到手机（AirDrop / 文件 app 均可）；
-3. TrollFools → 选择「树洞」→ 注入 → 选中 `ShuDong.dylib`；
-4. 重新打开树洞。
+树洞是 App Store 下载的正版包，主二进制 `whou` 带 FairPlay 加密。ElleKit/Substrate 这类
+越狱注入走的是 `DYLD_INSERT_LIBRARIES`，**完全不需要改动 app 二进制**，所以加密无所谓：
 
-### 越狱环境（rootless / roothide）
-
-把 dylib 放到 `/var/jb/usr/lib/TweakInject/ShuDong.dylib`，
-并配套一个同名 plist：
-
-```xml
-<dict>
-  <key>Filter</key>
-  <dict>
-    <key>Bundles</key>
-    <array><string>co.whou.pick</string></array>
-  </dict>
-</dict>
+```bash
+# roothide Dopamine
+dpkg -i ShuDong_1.0.0_iphoneos-arm64e.deb
+# rootless
+dpkg -i ShuDong_1.0.0_iphoneos-arm64.deb
 ```
+
+也可以直接用 Sileo/Zebra「从文件安装」。装完 postinst 会清掉旧缓存并 `killall -9 whou`，
+重开树洞即生效。卸载：`dpkg -r com.riboly.shudong`。
+
+deb 里的内容（路径相对 jbroot，dpkg 自己会加前缀）：
+
+```
+usr/lib/TweakInject/ShuDong.dylib
+usr/lib/TweakInject/ShuDong.plist   # Filter -> Bundles -> co.whou.pick
+```
+
+### TrollFools（需要先脱壳）
+
+TrollFools 是往 app 的 Mach-O 里写一条 `LC_LOAD_DYLIB`，因此**必须能改写主二进制**。
+对 FairPlay 加密的 App Store 包它会直接拒绝：
+
+```
+ERROR: No unencrypted target Mach-O is available.
+```
+
+这条报错说的是树洞自己的二进制，跟本 dylib 无关（同一份报告里 dylib 已被正常解析：
+`[arm64, arm64e] installName=@rpath/ShuDong.dylib minOS=14.0.0 platform=iOS`）。要走
+TrollFools 就得先在越狱环境里用脱壳工具（如 `trollfools` 自带的 dump、`iGameGod`、
+`flexdecrypt`、`bagbak` 等）导出脱壳 IPA 重签安装，再对脱壳后的 app 注入。
+
+**越狱机上直接装 deb 更省事，不需要脱壳。**
 
 ## 排查
 
@@ -95,8 +119,10 @@ hooks installed, serving .../main.patched.jsbundle
 ## 目录
 
 ```
-src/ShuDongPatch.m        插件本体（补丁表 + swizzling）
-build.sh                  编译脚本（clang + lipo + ldid）
+src/ShuDongPatch.m           插件本体（补丁表 + swizzling）
+layout/DEBIAN/               deb 控制文件（control / postinst / postrm）
+layout/usr/lib/TweakInject/  ShuDong.plist（Bundle 过滤器）
+build.sh                     编译脚本（clang + lipo + ldid + dpkg-deb）
 .github/workflows/build.yml  GitHub Actions 编译流程
 ```
 

@@ -21,10 +21,10 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-path
           xcrun --sdk iphoneos --show-sdk-version
 
-      - name: Install ldid
-        run: brew install ldid
+      - name: Install ldid and dpkg
+        run: brew install ldid dpkg
 
-      - name: Build dylib
+      - name: Build dylib and debs
         run: bash build.sh
 
       - name: Inspect result
@@ -32,6 +32,11 @@ jobs:
           ls -la build
           file build/ShuDong.dylib
           otool -L build/ShuDong.dylib
+          for d in build/*.deb; do
+            echo "--- $d"
+            dpkg-deb -I "$d"
+            dpkg-deb -c "$d"
+          done
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -40,6 +45,7 @@ jobs:
           path: |
             build/ShuDong.dylib
             build/ShuDong.zip
+            build/*.deb
           if-no-files-found: error
 
       - name: Publish release on tag
@@ -49,6 +55,7 @@ jobs:
           files: |
             build/ShuDong.dylib
             build/ShuDong.zip
+            build/*.deb
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

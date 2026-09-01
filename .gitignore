@@ -1,4 +1,6 @@
 build/
+dist/
 *.dylib
+*.deb
 *.zip
 .DS_Store

@@ -32,7 +32,7 @@ static NSString *const kJSBundleExt = @"jsbundle";
 static NSString *const kJSBundleFile = @"main.jsbundle";
 
 // Bump whenever the patch table changes so cached output is regenerated.
-static NSString *const kPatchVersion = @"3";
+static NSString *const kPatchVersion = @"4";
 
 static NSString *gOriginalPath = nil;   // real main.jsbundle inside the .app
 static NSString *gPatchedPath = nil;    // patched copy, nil until it exists
@@ -254,6 +254,27 @@ static NSString *sd_pathForResourceOfType(id self, SEL _cmd, NSString *name, NSS
     return orig_pathForResourceOfType(self, _cmd, name, ext);
 }
 
+static NSURL *(*orig_URLForResourceWithExtensionSubdir)(id, SEL, NSString *, NSString *, NSString *);
+static NSURL *sd_URLForResourceWithExtensionSubdir(id self, SEL _cmd, NSString *name,
+                                                   NSString *ext, NSString *subdir) {
+    if (gPatchedPath && self == [NSBundle mainBundle] && sd_isJSBundleResource(name, ext)) {
+        SDLog(@"URLForResource:%@ withExtension:%@ subdirectory:%@ -> patched bundle",
+              name, ext, subdir);
+        return [NSURL fileURLWithPath:gPatchedPath];
+    }
+    return orig_URLForResourceWithExtensionSubdir(self, _cmd, name, ext, subdir);
+}
+
+static NSString *(*orig_pathForResourceOfTypeInDir)(id, SEL, NSString *, NSString *, NSString *);
+static NSString *sd_pathForResourceOfTypeInDir(id self, SEL _cmd, NSString *name,
+                                               NSString *ext, NSString *dir) {
+    if (gPatchedPath && self == [NSBundle mainBundle] && sd_isJSBundleResource(name, ext)) {
+        SDLog(@"pathForResource:%@ ofType:%@ inDirectory:%@ -> patched bundle", name, ext, dir);
+        return gPatchedPath;
+    }
+    return orig_pathForResourceOfTypeInDir(self, _cmd, name, ext, dir);
+}
+
 #pragma mark - NSData hooks (fallback when the app builds the path itself)
 
 static NSData *(*orig_dataWithContentsOfFile)(id, SEL, NSString *);
@@ -307,6 +328,17 @@ static NSFileHandle *sd_fileHandleForReadingFromURL(id self, SEL _cmd, NSURL *ur
     return orig_fileHandleForReadingFromURL(self, _cmd, url, err);
 }
 
+static NSString *(*orig_stringWithContentsOfFileEncodingError)(id, SEL, NSString *,
+                                                               NSStringEncoding, NSError **);
+static NSString *sd_stringWithContentsOfFileEncodingError(id self, SEL _cmd, NSString *path,
+                                                          NSStringEncoding enc, NSError **err) {
+    if (sd_isOriginalBundlePath(path)) {
+        SDLog(@"stringWithContentsOfFile:encoding:error: -> patched bundle");
+        return orig_stringWithContentsOfFileEncodingError(self, _cmd, gPatchedPath, enc, err);
+    }
+    return orig_stringWithContentsOfFileEncodingError(self, _cmd, path, enc, err);
+}
+
 #pragma mark - install
 
 static IMP sd_replaceClassMethod(Class cls, SEL sel, IMP newImp) {
@@ -321,6 +353,14 @@ static void sd_installHooks(void) {
     orig_pathForResourceOfType = (void *)sd_replaceMethod(
         [NSBundle class], @selector(pathForResource:ofType:),
         (IMP)sd_pathForResourceOfType);
+
+    orig_URLForResourceWithExtensionSubdir = (void *)sd_replaceMethod(
+        [NSBundle class], @selector(URLForResource:withExtension:subdirectory:),
+        (IMP)sd_URLForResourceWithExtensionSubdir);
+
+    orig_pathForResourceOfTypeInDir = (void *)sd_replaceMethod(
+        [NSBundle class], @selector(pathForResource:ofType:inDirectory:),
+        (IMP)sd_pathForResourceOfTypeInDir);
 
     orig_dataWithContentsOfFile = (void *)sd_replaceClassMethod(
         [NSData class], @selector(dataWithContentsOfFile:),
@@ -341,6 +381,10 @@ static void sd_installHooks(void) {
     orig_fileHandleForReadingFromURL = (void *)sd_replaceClassMethod(
         [NSFileHandle class], @selector(fileHandleForReadingFromURL:error:),
         (IMP)sd_fileHandleForReadingFromURL);
+
+    orig_stringWithContentsOfFileEncodingError = (void *)sd_replaceClassMethod(
+        [NSString class], @selector(stringWithContentsOfFile:encoding:error:),
+        (IMP)sd_stringWithContentsOfFileEncodingError);
 }
 
 __attribute__((constructor)) static void sd_init(void) {

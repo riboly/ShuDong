@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ]; then
+    # Drop the cached patched bundle so the new patch table is applied, then
+    # restart the app if it is running.
+    rm -f /var/mobile/Containers/Data/Application/*/Library/Caches/ShuDongTweak/main.patched.stamp 2>/dev/null || true
+    killall -9 whou 2>/dev/null || true
+fi
+
+exit 0
