@@ -44,7 +44,7 @@ static NSString *const kJSBundleFile = @"main.jsbundle";
 static NSString *const kBackupSuffix = @".sdorig";
 
 // Bump whenever the patch table changes so cached output is regenerated.
-static NSString *const kPatchVersion = @"8";
+static NSString *const kPatchVersion = @"9";
 
 // Hot-update bundles inside the app container, newest-first.  Relative to
 // <Documents>.  __hvdown_old__ is the rollback copy the app keeps around.
@@ -84,6 +84,15 @@ static const SDPatch kPatches[] = {
         "this.dataSource=this.dataSource.cloneWithRows([].concat(babelHelpers.toConsumableArray(this.state.userListData)).filter(function(__sd){return!__sd||\"-1\"!==__sd.friendId}))",
     },
 
+    // Keep an unshadowed reference to React Native's module 46.  The friend
+    // profile callback uses local variables named `a`/`o`, so referring to
+    // the original module alias there causes a runtime error.
+    {
+        "capture-rn-module",
+        "__d(501,function(e,t,n,r){var i=t(13),o=babelHelpers.interopRequireDefault(i),a=t(46),s=t(362),u=t(502);",
+        "__d(501,function(e,t,n,r){var i=t(13),o=babelHelpers.interopRequireDefault(i),a=t(46),__sdRN=a,s=t(362),u=t(502);",
+    },
+
     // 2) Conversation list rows: remove the optional real friend id suffix.
     //
     //    UserListView.renderRowMiddleBlock(e) renders
@@ -102,14 +111,21 @@ static const SDPatch kPatches[] = {
     {
         "profile-full-friend-id",
         "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t.slice(0,6)}",
-        "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t,onPress:function(){a.Clipboard.setString(t),e.tip(\"ID已复制\")}}",
+        "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t,onPress:function(){__sdRN.Clipboard.setString(t),e.tip(\"ID已复制\")}}",
     },
 
     // Upgrade path from v7, which added a separate copy button.
     {
         "profile-copy-button-migration",
         "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t},{type:\"pbtn\",style:{marginTop:5},color:s.theme.deepGreen2Trans6,textColor:s.theme.white,text:\"\\u590d\\u5236ID\",onPress:function(){e.emit(\"sdCopyFriendId\",t)}}",
+        "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t,onPress:function(){__sdRN.Clipboard.setString(t),e.tip(\"ID已复制\")}}",
+    },
+
+    // Upgrade path from v8, whose profile row referenced the shadowed `a`.
+    {
+        "profile-clipboard-alias-migration",
         "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t,onPress:function(){a.Clipboard.setString(t),e.tip(\"ID已复制\")}}",
+        "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t,onPress:function(){__sdRN.Clipboard.setString(t),e.tip(\"ID已复制\")}}",
     },
 
     // 4) Settings page: insert an Add Chat button before notification
@@ -126,14 +142,21 @@ static const SDPatch kPatches[] = {
     {
         "settings-own-chat-id",
         "{type:\"btn\",name:\"Account\",label:(0,s.tr)(\"Account ID\"),value:i?\" \":e.account,onPress:function(n,r){t===e.userid&&e.setAccount(n)}},{type:\"bar\"},",
-        "{type:\"btn\",name:\"Account\",label:(0,s.tr)(\"Account ID\"),value:i?\" \":e.account,onPress:function(n,r){t===e.userid&&e.setAccount(n)}},{type:\"btn\",name:\"ChatId\",label:\"聊天ID\",value:e.userid,onPress:function(){a.Clipboard.setString(e.userid),e.tip(\"ID已复制\") }},{type:\"bar\"},",
+        "{type:\"btn\",name:\"Account\",label:(0,s.tr)(\"Account ID\"),value:i?\" \":e.account,onPress:function(n,r){t===e.userid&&e.setAccount(n)}},{type:\"btn\",name:\"ChatId\",label:\"聊天ID\",value:e.userid,onPress:function(){__sdRN.Clipboard.setString(e.userid),e.tip(\"ID已复制\") }},{type:\"bar\"},",
     },
 
     // Upgrade path from v7 settings row, which used the event bridge.
     {
         "settings-chat-copy-migration",
         "{type:\"btn\",name:\"Account\",label:(0,s.tr)(\"Account ID\"),value:i?\" \":e.account,onPress:function(n,r){t===e.userid&&e.setAccount(n)}},{type:\"btn\",name:\"ChatId\",label:\"聊天ID\",value:e.userid,onPress:function(){e.emit(\"sdCopyFriendId\",e.userid)}},{type:\"bar\"},",
+        "{type:\"btn\",name:\"Account\",label:(0,s.tr)(\"Account ID\"),value:i?\" \":e.account,onPress:function(n,r){t===e.userid&&e.setAccount(n)}},{type:\"btn\",name:\"ChatId\",label:\"聊天ID\",value:e.userid,onPress:function(){__sdRN.Clipboard.setString(e.userid),e.tip(\"ID已复制\") }},{type:\"bar\"},",
+    },
+
+    // Upgrade path from v8 settings row, whose alias was valid only there.
+    {
+        "settings-clipboard-alias-migration",
         "{type:\"btn\",name:\"Account\",label:(0,s.tr)(\"Account ID\"),value:i?\" \":e.account,onPress:function(n,r){t===e.userid&&e.setAccount(n)}},{type:\"btn\",name:\"ChatId\",label:\"聊天ID\",value:e.userid,onPress:function(){a.Clipboard.setString(e.userid),e.tip(\"ID已复制\") }},{type:\"bar\"},",
+        "{type:\"btn\",name:\"Account\",label:(0,s.tr)(\"Account ID\"),value:i?\" \":e.account,onPress:function(n,r){t===e.userid&&e.setAccount(n)}},{type:\"btn\",name:\"ChatId\",label:\"聊天ID\",value:e.userid,onPress:function(){__sdRN.Clipboard.setString(e.userid),e.tip(\"ID已复制\") }},{type:\"bar\"},",
     },
 
     // 8) Direct text sender and its two-input dialog.  This mirrors the

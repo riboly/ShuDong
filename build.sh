@@ -8,7 +8,7 @@
 set -euo pipefail
 
 NAME="ShuDong"
-VERSION="1.0.4"
+VERSION="1.0.5"
 MIN_IOS="14.0"
 SRC_DIR="src"
 LAYOUT_DIR="layout"
