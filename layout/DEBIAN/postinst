@@ -2,9 +2,18 @@
 set -e
 
 if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ]; then
-    # Drop the cached patched bundle so the new patch table is applied, then
-    # restart the app if it is running.
-    rm -f /var/mobile/Containers/Data/Application/*/Library/Caches/ShuDongTweak/main.patched.stamp 2>/dev/null || true
+    # Drop cached patched copies so the new patch table is applied, and put any
+    # in-place patched hot-update bundle back to its pristine state so the new
+    # revision starts from clean JS.
+    rm -f /var/mobile/Containers/Data/Application/*/Library/Caches/ShuDongTweak/*.stamp 2>/dev/null || true
+
+    for b in /var/mobile/Containers/Data/Application/*/Documents/dbundle/*.sdorig \
+             /var/mobile/Containers/Data/Application/*/Library/___Crane_Containers/*/Documents/dbundle/*.sdorig; do
+        [ -f "$b" ] || continue
+        orig="${b%.sdorig}"
+        cp -pf "$b" "$orig" 2>/dev/null || true
+    done
+
     killall -9 whou 2>/dev/null || true
 fi
 

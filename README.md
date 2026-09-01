@@ -12,27 +12,47 @@
 
 ## 实现原理
 
-树洞是 React Native 应用，界面全部由 `main.jsbundle`（未经 Hermes 编译的普通 Metro 打包）里的
-JavaScript 绘制，所以 hook UIKit 没有意义。插件的做法是：
+树洞是 React Native 应用，界面全部由 JavaScript 绘制（未经 Hermes 编译的普通 Metro 打包），
+所以 hook UIKit 没有意义。
 
-1. 启动时（`__attribute__((constructor))`）读取 app 包内原始 `main.jsbundle`；
-2. 对压缩后的 JS 做两处最小化文本替换：
-   - 列表数据源 `cloneWithRows(...)` 外面套一层 `.filter(row => row.friendId !== "-1")`；
-   - 列表行的 `NameText` 补上它自己已支持的 `appends` 属性，值为 `" [" + friendId + "]"`；
-3. 把补丁结果写到 app 自己的 Caches 目录 `Library/Caches/ShuDongTweak/main.patched.jsbundle`；
-4. 用 Objective-C runtime swizzling 把 RN 启动时查找/读取 bundle 的 API 重定向到补丁副本：
-   `-[NSBundle URLForResource:withExtension:]`、`-[NSBundle pathForResource:ofType:]`、
+**关键点：树洞自带热更新。** 只要 `Documents/dbundle/__hvdown__` 存在，app 运行的就是这份下载
+下来的 JS，而不是 app 包里的 `main.jsbundle`（本机上 `__hvdown__` 是 2025-12-24 的，包内那份还是
+2024-03-22 的）。所以只改包内 bundle 完全没有效果——这正是上一版明明加载、打补丁、装 hook 都成功
+却看不到任何变化的原因。
+
+插件同时处理两个来源：
+
+1. **热更新 bundle（`Documents/dbundle/__hvdown__`、`__hvdown_old__`）** 在 app 自己的沙盒里、
+   可写，所以在 dylib constructor 里（即 RN 打开它之前）**直接原地打补丁**。这样不管 RN 用
+   `NSData`、`NSFileHandle` 还是 C 层 `fopen`/`mmap` 读取都一样生效。原文件会先备份成
+   `<名字>.sdorig`，写完再把 mtime/权限恢复原样。
+2. **app 包内 `main.jsbundle`** 在只读的 `.app` 里，所以补丁副本写到
+   `Library/Caches/ShuDongTweak/main.patched.jsbundle`，再用 Objective-C runtime swizzling 把
+   RN 查找/读取 bundle 的 API 重定向过去：
+   `-[NSBundle URLForResource:withExtension:(subdirectory:)]`、
+   `-[NSBundle pathForResource:ofType:(inDirectory:)]`、
    `+[NSData dataWithContentsOfFile:(options:error:)]`、`+[NSData dataWithContentsOfURL:(options:error:)]`、
-   `+[NSFileHandle fileHandleForReadingFromURL:error:]`。
+   `+[NSFileHandle fileHandleForReadingFromURL:error:]`、`+[NSFileHandle fileHandleForReadingAtPath:]`、
+   `+[NSString stringWithContentsOfFile:encoding:error:]`。
+
+两处 JS 文本替换（最小改动，都复用 app 自己的机制）：
+
+- 列表数据源 `cloneWithRows(...)` 外面套一层 `.filter(row => row.friendId !== "-1")`；
+- 列表行的 `NameText` 补上它自己已支持的 `appends` 属性，值为 `" [" + friendId + "]"`。
 
 要点：
 
-- **不修改 app 包内任何文件**，只在 Caches 里放补丁副本，卸载插件即恢复原状；
+- **不修改 app 包内任何文件**；热更新 bundle 会原地改写，但保留 `.sdorig` 备份，
+  卸载（`postrm`）时自动还原；
 - **不依赖 CydiaSubstrate / ElleKit**，纯 `method_setImplementation`，因此既能用 TrollFools 注入，
   也能打包成普通 `.deb` 插件；
-- 补丁结果按「补丁版本 + 原 bundle 大小 + mtime」做缓存（`main.patched.stamp`），app 升级后自动重打；
+- 原地打补丁是**按内容判断幂等**的（补丁串已存在就跳过），app 再次热更新后下次启动自动重打；
+  只读来源的补丁副本按「补丁版本 + 原 bundle 大小 + mtime」缓存（`*.stamp`）；
+- 路径全部走 `NSHomeDirectory()` / `NSSearchPathForDirectoriesInDomains()`，所以 Crane 之类的
+  容器切换插件换过容器也能命中当前容器；
 - 只在 `bundleIdentifier == co.whou.pick` 时生效，其它进程直接返回；
-- 任何一条锚点都匹配不上时（app 更新导致 JS 变化）放弃打补丁、不安装 hook，app 以原始状态运行。
+- 任何一条锚点都匹配不上时（app 更新导致 JS 变化）放弃该文件、不改动，app 以原始状态运行；
+- 全过程写日志到 `Library/Caches/ShuDongTweak/patch.log`，包括每个 hook 第一次真正生效的记录。
 
 ## 编译
 
@@ -42,8 +62,8 @@ JavaScript 绘制，所以 hook UIKit 没有意义。插件的做法是：
 | 文件 | 用途 |
 | --- | --- |
 | `ShuDong.dylib` | 裸 dylib（TrollFools 注入用，需要已脱壳的 app） |
-| `ShuDong_1.0.0_iphoneos-arm64e.deb` | **roothide Dopamine**（推荐） |
-| `ShuDong_1.0.0_iphoneos-arm64.deb` | rootless Dopamine / ElleKit（`/var/jb`） |
+| `ShuDong_1.0.1_iphoneos-arm64e.deb` | **roothide Dopamine**（推荐） |
+| `ShuDong_1.0.1_iphoneos-arm64.deb` | rootless Dopamine / ElleKit（`/var/jb`） |
 
 打 `v*` tag 会同时发一个 Release。
 
@@ -63,9 +83,9 @@ bash build.sh          # 输出 build/ 下的 dylib 与两个 deb
 
 ```bash
 # roothide Dopamine
-dpkg -i ShuDong_1.0.0_iphoneos-arm64e.deb
+dpkg -i ShuDong_1.0.1_iphoneos-arm64e.deb
 # rootless
-dpkg -i ShuDong_1.0.0_iphoneos-arm64.deb
+dpkg -i ShuDong_1.0.1_iphoneos-arm64.deb
 ```
 
 也可以直接用 Sileo/Zebra「从文件安装」。装完 postinst 会清掉旧缓存并 `killall -9 whou`，
@@ -105,11 +125,17 @@ TrollFools 就得先在越狱环境里用脱壳工具（如 `trollfools` 自带�
 正常内容形如：
 
 ```
-patch hide-important-tip: 1 replacement(s)
-patch show-friend-id: 1 replacement(s)
-patched bundle written: .../main.patched.jsbundle (... -> ... chars)
-hooks installed, serving .../main.patched.jsbundle
+--- v5 launch, home=/var/mobile/Containers/Data/Application/<uuid>
+__hvdown__: patch hide-important-tip -> 1 replacement(s)
+__hvdown__: patch show-friend-id -> 1 replacement(s)
+__hvdown__: original backed up to __hvdown__.sdorig
+__hvdown__: patched in place (2050096 -> 2050182 chars)
+main.jsbundle: patched copy written to .../main.patched.jsbundle (... -> ... chars)
+ready: 2 source(s) patched, 1 redirect(s)
 ```
+
+热更新 bundle 只要出现 `patched in place`（或下次启动的 `already patched on disk`）就说明 app
+真正跑的那份 JS 已经改了。只读来源的重定向是否真的被用到，看有没有 `hook: ...` 行。
 
 同时所有日志都会用 `[ShuDong]` 前缀走 `NSLog`，可以用 `idevicesyslog` / Console.app 实时看。
 

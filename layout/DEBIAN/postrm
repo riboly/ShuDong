@@ -1,7 +1,18 @@
 #!/bin/sh
 set -e
 
+# Restore any hot-update bundle we patched in place, then drop our caches.
+restore_backups() {
+    for b in /var/mobile/Containers/Data/Application/*/Documents/dbundle/*.sdorig \
+             /var/mobile/Containers/Data/Application/*/Library/___Crane_Containers/*/Documents/dbundle/*.sdorig; do
+        [ -f "$b" ] || continue
+        orig="${b%.sdorig}"
+        mv -f "$b" "$orig" 2>/dev/null || true
+    done
+}
+
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    restore_backups
     rm -rf /var/mobile/Containers/Data/Application/*/Library/Caches/ShuDongTweak 2>/dev/null || true
     killall -9 whou 2>/dev/null || true
 fi

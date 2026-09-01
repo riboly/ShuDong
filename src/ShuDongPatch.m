@@ -2,21 +2,32 @@
 //  ShuDongPatch.m
 //  ShuDong tweak — enhancement plugin for 树洞 (co.whou.pick)
 //
-//  The app is a React Native app shipping a plain (non-Hermes) Metro bundle at
-//  <App.app>/main.jsbundle.  Its whole UI lives in JavaScript, so hooking UIKit
-//  classes buys us nothing.  Instead this dylib:
+//  树洞 is a React Native app with a plain (non-Hermes) Metro bundle, and it
+//  ships its own hot-update mechanism: the JS it actually runs is the
+//  downloaded bundle at <Documents>/dbundle/__hvdown__ whenever that file
+//  exists, falling back to <App.app>/main.jsbundle only otherwise.  Patching
+//  just the bundled copy therefore changes nothing on a device that has ever
+//  taken an update — which is exactly why the previous revision loaded,
+//  patched and hooked correctly yet had no visible effect.
 //
-//    1. reads the original main.jsbundle out of the app bundle,
-//    2. applies textual patches to the minified JS,
-//    3. writes the result into the app's Caches directory,
-//    4. redirects every API the RN bootstrap uses to locate/read the bundle
-//       (NSBundle resource lookup + NSData file reads) to the patched copy.
+//  So this dylib handles both sources:
+//
+//    * <Documents>/dbundle/__hvdown__ (and __hvdown_old__) live in the app's
+//      own container and are writable, so they are patched in place from the
+//      dylib constructor, i.e. before React Native ever opens them.  This works
+//      no matter which API the RN bootstrap uses (NSData, NSFileHandle, fopen,
+//      mmap, ...).  The untouched original is kept beside them as
+//      <name>.sdorig and the modification date is restored afterwards.
+//    * <App.app>/main.jsbundle sits in the read-only app bundle, so a patched
+//      copy is written into Caches and every API RN uses to locate or read the
+//      bundle is redirected to that copy.
 //
 //  Implemented with plain Objective-C runtime swizzling: no CydiaSubstrate /
-//  ElleKit dependency, so the same dylib works when injected with TrollFools
-//  and when shipped inside a regular .deb tweak.
+//  ElleKit link dependency, so the same dylib works when injected with
+//  TrollFools and when shipped inside a regular .deb tweak.
 //
-//  Patches (verified against 树洞 2.2.965):
+//  Patches (verified against both the bundled 2.2.965 JS and the current
+//  hot-updated bundle):
 //    * hide-important-tip — drops the pinned "重要提示" row (friendId "-1")
 //      from the conversation list on the home page.
 //    * show-friend-id     — appends the real friend id to every name in the
@@ -30,12 +41,23 @@ static NSString *const kTargetBundleId = @"co.whou.pick";
 static NSString *const kJSBundleName = @"main";
 static NSString *const kJSBundleExt = @"jsbundle";
 static NSString *const kJSBundleFile = @"main.jsbundle";
+static NSString *const kBackupSuffix = @".sdorig";
 
 // Bump whenever the patch table changes so cached output is regenerated.
-static NSString *const kPatchVersion = @"4";
+static NSString *const kPatchVersion = @"5";
 
-static NSString *gOriginalPath = nil;   // real main.jsbundle inside the .app
-static NSString *gPatchedPath = nil;    // patched copy, nil until it exists
+// Hot-update bundles inside the app container, newest-first.  Relative to
+// <Documents>.  __hvdown_old__ is the rollback copy the app keeps around.
+static NSString *const kHotBundlePaths[] = {
+    @"dbundle/__hvdown__",
+    @"dbundle/__hvdown_old__",
+};
+static const size_t kHotBundleCount =
+    sizeof(kHotBundlePaths) / sizeof(kHotBundlePaths[0]);
+
+// Original path -> patched path, for sources we cannot rewrite in place.
+static NSMutableDictionary<NSString *, NSString *> *gRedirects = nil;
+static NSString *gMainPatchedPath = nil;  // patched copy of main.jsbundle
 static NSString *gLogPath = nil;
 
 #define SDLog(fmt, ...) NSLog(@"[ShuDong] " fmt, ##__VA_ARGS__)
@@ -68,7 +90,7 @@ static const SDPatch kPatches[] = {
     //      createElement(a.NameText,{userid:e.friendId,imageFontSize:15,...})
     //
     //    NameText already supports an `appends` prop which it concatenates onto
-    //    the resolved display name (render: myTextValue: this.state.name + this.appends),
+    //    the resolved display name (myTextValue: this.state.name + this.appends),
     //    so we only have to pass it.
     {
         "show-friend-id",
@@ -104,13 +126,32 @@ static void sd_appendLog(NSString *line) {
     }
 }
 
+// Logs `line` only the first time it is seen, so hooks on hot paths cannot
+// flood patch.log.
+static void sd_appendLogOnce(NSString *line) {
+    static NSMutableSet *seen = nil;
+    if (!seen) {
+        seen = [NSMutableSet set];
+    }
+    @synchronized (seen) {
+        if ([seen containsObject:line]) {
+            return;
+        }
+        [seen addObject:line];
+    }
+    sd_appendLog(line);
+}
+
 #pragma mark - patching
 
-// Applies the patch table to `src`. Returns the patched source, or nil when not
-// a single patch matched (the caller then leaves the app completely untouched).
-static NSString *sd_applyPatches(NSString *src) {
+// Applies the patch table to `src`.  Returns the patched source, or nil when not
+// a single patch matched (the caller then leaves that file completely alone).
+// *outChanged tells the caller whether anything was actually rewritten, so an
+// already-patched file is not needlessly written back to disk.
+static NSString *sd_applyPatches(NSString *src, NSString *label, BOOL *outChanged) {
     NSMutableString *js = [src mutableCopy];
     NSUInteger applied = 0;
+    NSUInteger changed = 0;
 
     for (size_t i = 0; i < kPatchCount; i++) {
         SDPatch p = kPatches[i];
@@ -118,7 +159,8 @@ static NSString *sd_applyPatches(NSString *src) {
         NSString *repl = [NSString stringWithUTF8String:p.replace];
 
         if ([js rangeOfString:repl].location != NSNotFound) {
-            sd_appendLog([NSString stringWithFormat:@"patch %s: already present, skipped", p.name]);
+            sd_appendLog([NSString stringWithFormat:@"%@: patch %s already present",
+                          label, p.name]);
             applied++;
             continue;
         }
@@ -127,93 +169,177 @@ static NSString *sd_applyPatches(NSString *src) {
                                              withString:repl
                                                 options:NSLiteralSearch
                                                   range:NSMakeRange(0, js.length)];
-        sd_appendLog([NSString stringWithFormat:@"patch %s: %lu replacement(s)",
-                      p.name, (unsigned long)hits]);
+        sd_appendLog([NSString stringWithFormat:@"%@: patch %s -> %lu replacement(s)",
+                      label, p.name, (unsigned long)hits]);
         if (hits > 0) {
             applied++;
+            changed += hits;
         }
     }
 
     if (applied == 0) {
-        sd_appendLog(@"no patch matched — the app bundle probably changed; leaving it untouched");
+        sd_appendLog([NSString stringWithFormat:
+            @"%@: no patch matched — JS changed, leaving this file untouched", label]);
         return nil;
     }
     if (applied != kPatchCount) {
-        sd_appendLog([NSString stringWithFormat:@"WARNING: only %lu/%lu patches applied",
-                      (unsigned long)applied, (unsigned long)kPatchCount]);
+        sd_appendLog([NSString stringWithFormat:@"%@: WARNING only %lu/%lu patches applied",
+                      label, (unsigned long)applied, (unsigned long)kPatchCount]);
+    }
+    if (outChanged) {
+        *outChanged = (changed > 0);
     }
     return js;
 }
 
-// Builds (or reuses) the patched bundle and returns its path, or nil on failure.
-static NSString *sd_preparePatchedBundle(void) {
+// Rewrites a writable bundle (the hot-update copies in <Documents>) in place.
+// Keeps <path>.sdorig as a pristine backup and restores the modification date
+// so the app cannot tell the file was touched.  Returns YES when the file on
+// disk now carries our patches.
+static BOOL sd_patchInPlace(NSString *path) {
     NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *label = path.lastPathComponent;
 
-    NSDictionary *attrs = [fm attributesOfItemAtPath:gOriginalPath error:NULL];
+    NSDictionary *attrs = [fm attributesOfItemAtPath:path error:NULL];
     if (!attrs) {
-        sd_appendLog([NSString stringWithFormat:@"original bundle not found at %@", gOriginalPath]);
-        return nil;
+        return NO;
     }
 
+    NSError *err = nil;
+    NSString *src = [NSString stringWithContentsOfFile:path
+                                             encoding:NSUTF8StringEncoding error:&err];
+    if (!src.length) {
+        sd_appendLog([NSString stringWithFormat:@"%@: unreadable (%@)", label, err]);
+        return NO;
+    }
+
+    BOOL changed = NO;
+    NSString *patched = sd_applyPatches(src, label, &changed);
+    if (!patched) {
+        return NO;
+    }
+    if (!changed) {
+        sd_appendLog([NSString stringWithFormat:@"%@: already patched on disk, nothing to do",
+                      label]);
+        return YES;
+    }
+
+    NSString *backup = [path stringByAppendingString:kBackupSuffix];
+    if (![fm fileExistsAtPath:backup]) {
+        if ([fm copyItemAtPath:path toPath:backup error:&err]) {
+            sd_appendLog([NSString stringWithFormat:@"%@: original backed up to %@",
+                          label, backup.lastPathComponent]);
+        } else {
+            sd_appendLog([NSString stringWithFormat:@"%@: backup failed (%@), aborting",
+                          label, err]);
+            return NO;
+        }
+    }
+
+    if (![patched writeToFile:path atomically:YES
+                    encoding:NSUTF8StringEncoding error:&err]) {
+        sd_appendLog([NSString stringWithFormat:@"%@: in-place write failed (%@)", label, err]);
+        return NO;
+    }
+
+    // Put the original mtime and permissions back: atomic writes create a new
+    // inode, and the app keys its update bookkeeping off this file.
+    NSMutableDictionary *restore = [NSMutableDictionary dictionary];
+    if (attrs[NSFileModificationDate]) {
+        restore[NSFileModificationDate] = attrs[NSFileModificationDate];
+    }
+    if (attrs[NSFilePosixPermissions]) {
+        restore[NSFilePosixPermissions] = attrs[NSFilePosixPermissions];
+    }
+    [fm setAttributes:restore ofItemAtPath:path error:NULL];
+
+    sd_appendLog([NSString stringWithFormat:@"%@: patched in place (%lu -> %lu chars)",
+                  label, (unsigned long)src.length, (unsigned long)patched.length]);
+    return YES;
+}
+
+static NSString *sd_tweakCachesDir(void) {
     NSString *caches = [NSSearchPathForDirectoriesInDomains(
         NSCachesDirectory, NSUserDomainMask, YES) firstObject];
     NSString *dir = [caches stringByAppendingPathComponent:@"ShuDongTweak"];
-    [fm createDirectoryAtPath:dir withIntermediateDirectories:YES
-                   attributes:nil error:NULL];
+    [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                             withIntermediateDirectories:YES
+                                              attributes:nil error:NULL];
+    return dir;
+}
 
-    gLogPath = [dir stringByAppendingPathComponent:@"patch.log"];
+// Builds (or reuses) a patched copy of a read-only source and registers a
+// redirect for it.  Returns the patched path, or nil on failure.
+static NSString *sd_preparePatchedCopy(NSString *origPath, NSString *outName) {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *label = origPath.lastPathComponent;
 
-    // Cache key: patch version + source size + source mtime.
+    NSDictionary *attrs = [fm attributesOfItemAtPath:origPath error:NULL];
+    if (!attrs) {
+        sd_appendLog([NSString stringWithFormat:@"%@: not found at %@", label, origPath]);
+        return nil;
+    }
+
+    NSString *dir = sd_tweakCachesDir();
+    NSString *out = [dir stringByAppendingPathComponent:outName];
+    NSString *stampPath = [out stringByAppendingPathExtension:@"stamp"];
+
     unsigned long long size = [attrs[NSFileSize] unsignedLongLongValue];
     NSTimeInterval mtime = [(NSDate *)attrs[NSFileModificationDate] timeIntervalSince1970];
     NSString *stamp = [NSString stringWithFormat:@"v%@-%llu-%.0f", kPatchVersion, size, mtime];
-
-    NSString *out = [dir stringByAppendingPathComponent:@"main.patched.jsbundle"];
-    NSString *metaPath = [dir stringByAppendingPathComponent:@"main.patched.stamp"];
-    NSString *meta = [NSString stringWithContentsOfFile:metaPath
+    NSString *have = [NSString stringWithContentsOfFile:stampPath
                                               encoding:NSUTF8StringEncoding error:NULL];
 
-    if ([meta isEqualToString:stamp] && [fm fileExistsAtPath:out]) {
-        sd_appendLog([NSString stringWithFormat:@"reusing cached patched bundle (%@)", stamp]);
+    if ([have isEqualToString:stamp] && [fm fileExistsAtPath:out]) {
+        sd_appendLog([NSString stringWithFormat:@"%@: reusing cached patched copy (%@)",
+                      label, stamp]);
+        gRedirects[origPath] = out;
         return out;
     }
 
     NSError *err = nil;
-    NSString *src = [NSString stringWithContentsOfFile:gOriginalPath
+    NSString *src = [NSString stringWithContentsOfFile:origPath
                                              encoding:NSUTF8StringEncoding error:&err];
     if (!src.length) {
-        sd_appendLog([NSString stringWithFormat:@"failed to read original bundle: %@", err]);
+        sd_appendLog([NSString stringWithFormat:@"%@: unreadable (%@)", label, err]);
         return nil;
     }
 
-    NSString *patched = sd_applyPatches(src);
+    NSString *patched = sd_applyPatches(src, label, NULL);
     if (!patched) {
         return nil;
     }
-
     if (![patched writeToFile:out atomically:YES
                     encoding:NSUTF8StringEncoding error:&err]) {
-        sd_appendLog([NSString stringWithFormat:@"failed to write patched bundle: %@", err]);
+        sd_appendLog([NSString stringWithFormat:@"%@: write failed (%@)", label, err]);
         return nil;
     }
-    [stamp writeToFile:metaPath atomically:YES
-              encoding:NSUTF8StringEncoding error:NULL];
+    [stamp writeToFile:stampPath atomically:YES encoding:NSUTF8StringEncoding error:NULL];
 
-    sd_appendLog([NSString stringWithFormat:@"patched bundle written: %@ (%lu -> %lu chars)",
-                  out, (unsigned long)src.length, (unsigned long)patched.length]);
+    sd_appendLog([NSString stringWithFormat:@"%@: patched copy written to %@ (%lu -> %lu chars)",
+                  label, out, (unsigned long)src.length, (unsigned long)patched.length]);
+    gRedirects[origPath] = out;
     return out;
 }
 
 #pragma mark - swizzle helpers
 
-static BOOL sd_isOriginalBundlePath(NSString *path) {
-    if (!gPatchedPath || path.length == 0) {
-        return NO;
+// Returns the patched replacement for `path`, or nil when the path is none of
+// our business.  Matching is by full path first (exact redirect) and then by
+// file name, so a container path we did not enumerate still resolves.
+static NSString *sd_redirectForPath(NSString *path) {
+    if (path.length == 0 || gRedirects.count == 0) {
+        return nil;
     }
-    if ([path isEqualToString:gPatchedPath]) {
-        return NO;
+    NSString *hit = gRedirects[path];
+    if (hit) {
+        return [hit isEqualToString:path] ? nil : hit;
     }
-    return [path.lastPathComponent isEqualToString:kJSBundleFile];
+    if (gMainPatchedPath && [path.lastPathComponent isEqualToString:kJSBundleFile] &&
+        ![path isEqualToString:gMainPatchedPath]) {
+        return gMainPatchedPath;
+    }
+    return nil;
 }
 
 static BOOL sd_isJSBundleResource(NSString *name, NSString *ext) {
@@ -228,28 +354,33 @@ static BOOL sd_isJSBundleResource(NSString *name, NSString *ext) {
 static IMP sd_replaceMethod(Class cls, SEL sel, IMP newImp) {
     Method m = class_getInstanceMethod(cls, sel);
     if (!m) {
-        SDLog(@"missing method %@ on %@", NSStringFromSelector(sel), cls);
+        sd_appendLog([NSString stringWithFormat:@"missing method %@ on %@",
+                      NSStringFromSelector(sel), cls]);
         return NULL;
     }
     return method_setImplementation(m, newImp);
+}
+
+static IMP sd_replaceClassMethod(Class cls, SEL sel, IMP newImp) {
+    return sd_replaceMethod(object_getClass(cls), sel, newImp);
 }
 
 #pragma mark - NSBundle hooks
 
 static NSURL *(*orig_URLForResourceWithExtension)(id, SEL, NSString *, NSString *);
 static NSURL *sd_URLForResourceWithExtension(id self, SEL _cmd, NSString *name, NSString *ext) {
-    if (gPatchedPath && self == [NSBundle mainBundle] && sd_isJSBundleResource(name, ext)) {
-        SDLog(@"URLForResource:%@ withExtension:%@ -> patched bundle", name, ext);
-        return [NSURL fileURLWithPath:gPatchedPath];
+    if (gMainPatchedPath && self == [NSBundle mainBundle] && sd_isJSBundleResource(name, ext)) {
+        sd_appendLogOnce(@"hook: URLForResource:withExtension: -> patched main.jsbundle");
+        return [NSURL fileURLWithPath:gMainPatchedPath];
     }
     return orig_URLForResourceWithExtension(self, _cmd, name, ext);
 }
 
 static NSString *(*orig_pathForResourceOfType)(id, SEL, NSString *, NSString *);
 static NSString *sd_pathForResourceOfType(id self, SEL _cmd, NSString *name, NSString *ext) {
-    if (gPatchedPath && self == [NSBundle mainBundle] && sd_isJSBundleResource(name, ext)) {
-        SDLog(@"pathForResource:%@ ofType:%@ -> patched bundle", name, ext);
-        return gPatchedPath;
+    if (gMainPatchedPath && self == [NSBundle mainBundle] && sd_isJSBundleResource(name, ext)) {
+        sd_appendLogOnce(@"hook: pathForResource:ofType: -> patched main.jsbundle");
+        return gMainPatchedPath;
     }
     return orig_pathForResourceOfType(self, _cmd, name, ext);
 }
@@ -257,10 +388,9 @@ static NSString *sd_pathForResourceOfType(id self, SEL _cmd, NSString *name, NSS
 static NSURL *(*orig_URLForResourceWithExtensionSubdir)(id, SEL, NSString *, NSString *, NSString *);
 static NSURL *sd_URLForResourceWithExtensionSubdir(id self, SEL _cmd, NSString *name,
                                                    NSString *ext, NSString *subdir) {
-    if (gPatchedPath && self == [NSBundle mainBundle] && sd_isJSBundleResource(name, ext)) {
-        SDLog(@"URLForResource:%@ withExtension:%@ subdirectory:%@ -> patched bundle",
-              name, ext, subdir);
-        return [NSURL fileURLWithPath:gPatchedPath];
+    if (gMainPatchedPath && self == [NSBundle mainBundle] && sd_isJSBundleResource(name, ext)) {
+        sd_appendLogOnce(@"hook: URLForResource:withExtension:subdirectory: -> patched main.jsbundle");
+        return [NSURL fileURLWithPath:gMainPatchedPath];
     }
     return orig_URLForResourceWithExtensionSubdir(self, _cmd, name, ext, subdir);
 }
@@ -268,20 +398,22 @@ static NSURL *sd_URLForResourceWithExtensionSubdir(id self, SEL _cmd, NSString *
 static NSString *(*orig_pathForResourceOfTypeInDir)(id, SEL, NSString *, NSString *, NSString *);
 static NSString *sd_pathForResourceOfTypeInDir(id self, SEL _cmd, NSString *name,
                                                NSString *ext, NSString *dir) {
-    if (gPatchedPath && self == [NSBundle mainBundle] && sd_isJSBundleResource(name, ext)) {
-        SDLog(@"pathForResource:%@ ofType:%@ inDirectory:%@ -> patched bundle", name, ext, dir);
-        return gPatchedPath;
+    if (gMainPatchedPath && self == [NSBundle mainBundle] && sd_isJSBundleResource(name, ext)) {
+        sd_appendLogOnce(@"hook: pathForResource:ofType:inDirectory: -> patched main.jsbundle");
+        return gMainPatchedPath;
     }
     return orig_pathForResourceOfTypeInDir(self, _cmd, name, ext, dir);
 }
 
-#pragma mark - NSData hooks (fallback when the app builds the path itself)
+#pragma mark - file read hooks (used when the app builds the path itself)
 
 static NSData *(*orig_dataWithContentsOfFile)(id, SEL, NSString *);
 static NSData *sd_dataWithContentsOfFile(id self, SEL _cmd, NSString *path) {
-    if (sd_isOriginalBundlePath(path)) {
-        SDLog(@"dataWithContentsOfFile: -> patched bundle");
-        return orig_dataWithContentsOfFile(self, _cmd, gPatchedPath);
+    NSString *to = sd_redirectForPath(path);
+    if (to) {
+        sd_appendLogOnce([NSString stringWithFormat:@"hook: dataWithContentsOfFile: %@ -> %@",
+                          path.lastPathComponent, to.lastPathComponent]);
+        return orig_dataWithContentsOfFile(self, _cmd, to);
     }
     return orig_dataWithContentsOfFile(self, _cmd, path);
 }
@@ -290,18 +422,23 @@ static NSData *(*orig_dataWithContentsOfFileOptionsError)(id, SEL, NSString *,
                                                           NSDataReadingOptions, NSError **);
 static NSData *sd_dataWithContentsOfFileOptionsError(id self, SEL _cmd, NSString *path,
                                                      NSDataReadingOptions opts, NSError **err) {
-    if (sd_isOriginalBundlePath(path)) {
-        SDLog(@"dataWithContentsOfFile:options:error: -> patched bundle");
-        return orig_dataWithContentsOfFileOptionsError(self, _cmd, gPatchedPath, opts, err);
+    NSString *to = sd_redirectForPath(path);
+    if (to) {
+        sd_appendLogOnce([NSString stringWithFormat:
+            @"hook: dataWithContentsOfFile:options: %@ -> %@",
+            path.lastPathComponent, to.lastPathComponent]);
+        return orig_dataWithContentsOfFileOptionsError(self, _cmd, to, opts, err);
     }
     return orig_dataWithContentsOfFileOptionsError(self, _cmd, path, opts, err);
 }
 
 static NSData *(*orig_dataWithContentsOfURL)(id, SEL, NSURL *);
 static NSData *sd_dataWithContentsOfURL(id self, SEL _cmd, NSURL *url) {
-    if (url.isFileURL && sd_isOriginalBundlePath(url.path)) {
-        SDLog(@"dataWithContentsOfURL: -> patched bundle");
-        return orig_dataWithContentsOfURL(self, _cmd, [NSURL fileURLWithPath:gPatchedPath]);
+    NSString *to = url.isFileURL ? sd_redirectForPath(url.path) : nil;
+    if (to) {
+        sd_appendLogOnce([NSString stringWithFormat:@"hook: dataWithContentsOfURL: %@ -> %@",
+                          url.lastPathComponent, to.lastPathComponent]);
+        return orig_dataWithContentsOfURL(self, _cmd, [NSURL fileURLWithPath:to]);
     }
     return orig_dataWithContentsOfURL(self, _cmd, url);
 }
@@ -310,40 +447,54 @@ static NSData *(*orig_dataWithContentsOfURLOptionsError)(id, SEL, NSURL *,
                                                          NSDataReadingOptions, NSError **);
 static NSData *sd_dataWithContentsOfURLOptionsError(id self, SEL _cmd, NSURL *url,
                                                     NSDataReadingOptions opts, NSError **err) {
-    if (url.isFileURL && sd_isOriginalBundlePath(url.path)) {
-        SDLog(@"dataWithContentsOfURL:options:error: -> patched bundle");
+    NSString *to = url.isFileURL ? sd_redirectForPath(url.path) : nil;
+    if (to) {
+        sd_appendLogOnce([NSString stringWithFormat:
+            @"hook: dataWithContentsOfURL:options: %@ -> %@",
+            url.lastPathComponent, to.lastPathComponent]);
         return orig_dataWithContentsOfURLOptionsError(
-            self, _cmd, [NSURL fileURLWithPath:gPatchedPath], opts, err);
+            self, _cmd, [NSURL fileURLWithPath:to], opts, err);
     }
     return orig_dataWithContentsOfURLOptionsError(self, _cmd, url, opts, err);
 }
 
 static NSFileHandle *(*orig_fileHandleForReadingFromURL)(id, SEL, NSURL *, NSError **);
 static NSFileHandle *sd_fileHandleForReadingFromURL(id self, SEL _cmd, NSURL *url, NSError **err) {
-    if (url.isFileURL && sd_isOriginalBundlePath(url.path)) {
-        SDLog(@"fileHandleForReadingFromURL: -> patched bundle");
-        return orig_fileHandleForReadingFromURL(
-            self, _cmd, [NSURL fileURLWithPath:gPatchedPath], err);
+    NSString *to = url.isFileURL ? sd_redirectForPath(url.path) : nil;
+    if (to) {
+        sd_appendLogOnce([NSString stringWithFormat:@"hook: fileHandleForReadingFromURL: %@ -> %@",
+                          url.lastPathComponent, to.lastPathComponent]);
+        return orig_fileHandleForReadingFromURL(self, _cmd, [NSURL fileURLWithPath:to], err);
     }
     return orig_fileHandleForReadingFromURL(self, _cmd, url, err);
+}
+
+static NSFileHandle *(*orig_fileHandleForReadingAtPath)(id, SEL, NSString *);
+static NSFileHandle *sd_fileHandleForReadingAtPath(id self, SEL _cmd, NSString *path) {
+    NSString *to = sd_redirectForPath(path);
+    if (to) {
+        sd_appendLogOnce([NSString stringWithFormat:@"hook: fileHandleForReadingAtPath: %@ -> %@",
+                          path.lastPathComponent, to.lastPathComponent]);
+        return orig_fileHandleForReadingAtPath(self, _cmd, to);
+    }
+    return orig_fileHandleForReadingAtPath(self, _cmd, path);
 }
 
 static NSString *(*orig_stringWithContentsOfFileEncodingError)(id, SEL, NSString *,
                                                                NSStringEncoding, NSError **);
 static NSString *sd_stringWithContentsOfFileEncodingError(id self, SEL _cmd, NSString *path,
                                                           NSStringEncoding enc, NSError **err) {
-    if (sd_isOriginalBundlePath(path)) {
-        SDLog(@"stringWithContentsOfFile:encoding:error: -> patched bundle");
-        return orig_stringWithContentsOfFileEncodingError(self, _cmd, gPatchedPath, enc, err);
+    NSString *to = sd_redirectForPath(path);
+    if (to) {
+        sd_appendLogOnce([NSString stringWithFormat:
+            @"hook: stringWithContentsOfFile:encoding: %@ -> %@",
+            path.lastPathComponent, to.lastPathComponent]);
+        return orig_stringWithContentsOfFileEncodingError(self, _cmd, to, enc, err);
     }
     return orig_stringWithContentsOfFileEncodingError(self, _cmd, path, enc, err);
 }
 
 #pragma mark - install
-
-static IMP sd_replaceClassMethod(Class cls, SEL sel, IMP newImp) {
-    return sd_replaceMethod(object_getClass(cls), sel, newImp);
-}
 
 static void sd_installHooks(void) {
     orig_URLForResourceWithExtension = (void *)sd_replaceMethod(
@@ -382,6 +533,10 @@ static void sd_installHooks(void) {
         [NSFileHandle class], @selector(fileHandleForReadingFromURL:error:),
         (IMP)sd_fileHandleForReadingFromURL);
 
+    orig_fileHandleForReadingAtPath = (void *)sd_replaceClassMethod(
+        [NSFileHandle class], @selector(fileHandleForReadingAtPath:),
+        (IMP)sd_fileHandleForReadingAtPath);
+
     orig_stringWithContentsOfFileEncodingError = (void *)sd_replaceClassMethod(
         [NSString class], @selector(stringWithContentsOfFile:encoding:error:),
         (IMP)sd_stringWithContentsOfFileEncodingError);
@@ -397,26 +552,55 @@ __attribute__((constructor)) static void sd_init(void) {
             return;
         }
 
-        // Resolve the real bundle path before any hook is installed.
-        gOriginalPath = [main.resourcePath stringByAppendingPathComponent:kJSBundleFile];
-        if (![[NSFileManager defaultManager] fileExistsAtPath:gOriginalPath]) {
-            gOriginalPath = [main pathForResource:kJSBundleName ofType:kJSBundleExt];
+        gRedirects = [NSMutableDictionary dictionary];
+        gLogPath = [sd_tweakCachesDir() stringByAppendingPathComponent:@"patch.log"];
+        sd_appendLog([NSString stringWithFormat:@"--- v%@ launch, home=%@",
+                      kPatchVersion, NSHomeDirectory()]);
+
+        NSFileManager *fm = [NSFileManager defaultManager];
+        NSString *docs = [NSSearchPathForDirectoriesInDomains(
+            NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        NSUInteger live = 0;
+
+        // 1) The hot-updated bundles the app actually runs.  Writable, so patch
+        //    them on disk before React Native gets a chance to read them.
+        for (size_t i = 0; i < kHotBundleCount; i++) {
+            NSString *path = [docs stringByAppendingPathComponent:kHotBundlePaths[i]];
+            if (![fm fileExistsAtPath:path]) {
+                continue;
+            }
+            if (sd_patchInPlace(path)) {
+                live++;
+                continue;
+            }
+            // Read-only or write refused: fall back to serving a patched copy.
+            NSString *outName = [NSString stringWithFormat:@"%@.patched.js",
+                                 path.lastPathComponent];
+            if (sd_preparePatchedCopy(path, outName)) {
+                live++;
+            }
         }
 
-        NSString *patched = sd_preparePatchedBundle();
-        if (!patched) {
-            sd_appendLog(@"giving up, app runs unmodified");
+        // 2) The bundled fallback inside the read-only .app.
+        NSString *bundled = [main.resourcePath stringByAppendingPathComponent:kJSBundleFile];
+        if (![fm fileExistsAtPath:bundled]) {
+            bundled = [main pathForResource:kJSBundleName ofType:kJSBundleExt];
+        }
+        if (bundled.length) {
+            gMainPatchedPath = sd_preparePatchedCopy(bundled, @"main.patched.jsbundle");
+            if (gMainPatchedPath) {
+                live++;
+            }
+        }
+
+        if (live == 0) {
+            sd_appendLog(@"nothing patched, app runs unmodified");
             return;
         }
-        gPatchedPath = patched;
 
         sd_installHooks();
-        sd_appendLog([NSString stringWithFormat:@"hooks installed, serving %@", gPatchedPath]);
+        sd_appendLog([NSString stringWithFormat:@"ready: %lu source(s) patched, %lu redirect(s)",
+                      (unsigned long)live, (unsigned long)gRedirects.count]);
     }
 }
-
-
-
-
-
 

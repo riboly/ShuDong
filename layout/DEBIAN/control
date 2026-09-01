@@ -1,6 +1,6 @@
 Package: com.riboly.shudong
 Name: ShuDong Enhancer
-Version: 1.0.0
+Version: 1.0.1
 Section: Tweaks
 Depends: ellekit | mobilesubstrate
 Architecture: iphoneos-arm64
