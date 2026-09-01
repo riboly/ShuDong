@@ -44,7 +44,7 @@ static NSString *const kJSBundleFile = @"main.jsbundle";
 static NSString *const kBackupSuffix = @".sdorig";
 
 // Bump whenever the patch table changes so cached output is regenerated.
-static NSString *const kPatchVersion = @"7";
+static NSString *const kPatchVersion = @"8";
 
 // Hot-update bundles inside the app container, newest-first.  Relative to
 // <Documents>.  __hvdown_old__ is the rollback copy the app keeps around.
@@ -98,11 +98,18 @@ static const SDPatch kPatches[] = {
     },
 
     // 3) Friend profile: show the complete id (the stock UI truncates it to
-    // six characters) and add a copy button handled by AboutMeView.
+    // six characters).  The value row itself copies the id when tapped.
     {
         "profile-full-friend-id",
         "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t.slice(0,6)}",
+        "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t,onPress:function(){a.Clipboard.setString(t),e.tip(\"ID已复制\")}}",
+    },
+
+    // Upgrade path from v7, which added a separate copy button.
+    {
+        "profile-copy-button-migration",
         "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t},{type:\"pbtn\",style:{marginTop:5},color:s.theme.deepGreen2Trans6,textColor:s.theme.white,text:\"\\u590d\\u5236ID\",onPress:function(){e.emit(\"sdCopyFriendId\",t)}}",
+        "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t,onPress:function(){a.Clipboard.setString(t),e.tip(\"ID已复制\")}}",
     },
 
     // 4) Settings page: insert an Add Chat button before notification
@@ -115,28 +122,21 @@ static const SDPatch kPatches[] = {
     },
 
     // 5) Settings page: expose this account's chat id directly below the
-    // account row.  It uses the same copy event as the friend profile.
+    // account row.  Tapping the value writes it to the native clipboard.
     {
         "settings-own-chat-id",
         "{type:\"btn\",name:\"Account\",label:(0,s.tr)(\"Account ID\"),value:i?\" \":e.account,onPress:function(n,r){t===e.userid&&e.setAccount(n)}},{type:\"bar\"},",
+        "{type:\"btn\",name:\"Account\",label:(0,s.tr)(\"Account ID\"),value:i?\" \":e.account,onPress:function(n,r){t===e.userid&&e.setAccount(n)}},{type:\"btn\",name:\"ChatId\",label:\"聊天ID\",value:e.userid,onPress:function(){a.Clipboard.setString(e.userid),e.tip(\"ID已复制\") }},{type:\"bar\"},",
+    },
+
+    // Upgrade path from v7 settings row, which used the event bridge.
+    {
+        "settings-chat-copy-migration",
         "{type:\"btn\",name:\"Account\",label:(0,s.tr)(\"Account ID\"),value:i?\" \":e.account,onPress:function(n,r){t===e.userid&&e.setAccount(n)}},{type:\"btn\",name:\"ChatId\",label:\"聊天ID\",value:e.userid,onPress:function(){e.emit(\"sdCopyFriendId\",e.userid)}},{type:\"bar\"},",
+        "{type:\"btn\",name:\"Account\",label:(0,s.tr)(\"Account ID\"),value:i?\" \":e.account,onPress:function(n,r){t===e.userid&&e.setAccount(n)}},{type:\"btn\",name:\"ChatId\",label:\"聊天ID\",value:e.userid,onPress:function(){a.Clipboard.setString(e.userid),e.tip(\"ID已复制\") }},{type:\"bar\"},",
     },
 
-    // 6) AboutMeView listens for this event and performs the native clipboard
-    // call, keeping the app-module patch independent of RN module numbering.
-    {
-        "profile-copy-event",
-        "componentDidMount:function(){l.apps.on(\"statusBarDiffChanged\",this.onStatusBarDiffChanged),l.apps.on(\"showBackgroundImageToggled\",this.onShowBackgroundImageToggled),l.apps.on(\"aboutMeViewLoaded_\"+this.props.userid,this.onAboutMeViewLoaded),l.apps.on(\"profileLoaded_\"+this.props.userid,this.onProfileLoaded),l.apps.on(\"notificationPermissionChanged\",this.notificationPermissionChanged),l.apps.on(\"userChanged\",this.onUserChanged)}",
-        "componentDidMount:function(){l.apps.on(\"statusBarDiffChanged\",this.onStatusBarDiffChanged),l.apps.on(\"showBackgroundImageToggled\",this.onShowBackgroundImageToggled),l.apps.on(\"aboutMeViewLoaded_\"+this.props.userid,this.onAboutMeViewLoaded),l.apps.on(\"profileLoaded_\"+this.props.userid,this.onProfileLoaded),l.apps.on(\"notificationPermissionChanged\",this.notificationPermissionChanged),l.apps.on(\"userChanged\",this.onUserChanged),l.apps.on(\"sdCopyFriendId\",this.sdCopyFriendId)}",
-    },
-
-    {
-        "profile-copy-method-and-unsubscribe",
-        "l.apps.unon(\"notificationPermissionChanged\",this.notificationPermissionChanged),l.apps.unon(\"userChanged\",this.onUserChanged)},onShowBackgroundImageToggled:function(){this.setListData(l.apps.changeAllListData(this.listData))},setListData:function(e){",
-        "l.apps.unon(\"notificationPermissionChanged\",this.notificationPermissionChanged),l.apps.unon(\"userChanged\",this.onUserChanged),l.apps.unon(\"sdCopyFriendId\",this.sdCopyFriendId)},onShowBackgroundImageToggled:function(){this.setListData(l.apps.changeAllListData(this.listData))},sdCopyFriendId:function(e){i.Clipboard.setString(e),l.apps.tip(\"ID已复制\")},setListData:function(e){",
-    },
-
-    // 7) Direct text sender and its two-input dialog.  This mirrors the
+    // 8) Direct text sender and its two-input dialog.  This mirrors the
     // parameters used by InteractView for a normal one-to-one conversation.
     {
         "direct-chat-helper",

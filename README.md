@@ -8,8 +8,8 @@
 | 功能 | 说明 |
 | --- | --- |
 | 移除"重要提示" | 首页对话列表顶部那条置顶的"重要提示"（保留 id `-1` 的伪好友）不再显示 |
-| 好友个人信息显示完整 id | 好友列表不再显示 ID；进入好友个人信息页可查看完整“用户ID”，并提供“复制ID”按钮 |
-| 设置页显示本账号聊天 ID | 账号下面新增“聊天ID”，其他账号可用此 ID 通过“添加聊天”发起私聊 |
+| 好友个人信息显示完整 id | 好友列表不再显示 ID；进入好友个人信息页可查看完整“用户ID”，点击 ID 即复制 |
+| 设置页显示本账号聊天 ID | 账号下面新增“聊天ID”，点击 ID 即复制；其他账号可用此 ID 通过“添加聊天”发起私聊 |
 | 添加聊天 | 设置页新增“添加聊天”，输入好友真实 ID 和消息后直接发送一条私聊 |
 
 ## 实现原理
@@ -37,7 +37,7 @@
    `+[NSFileHandle fileHandleForReadingFromURL:error:]`、`+[NSFileHandle fileHandleForReadingAtPath:]`、
    `+[NSString stringWithContentsOfFile:encoding:error:]`。
 
-JS 文本替换（7 个内容锚点，均为最小改动并复用 app 自己的机制）：
+JS 文本替换（8 个内容锚点，均为最小改动并复用 app 自己的机制）：
 
 - 列表数据源 `cloneWithRows(...)` 外面套一层 `.filter(row => row.friendId !== "-1")`；
 - 列表行移除旧版本可能写入的 `NameText appends` 好友 ID 后缀，首页仅显示昵称。
@@ -66,8 +66,8 @@ JS 文本替换（7 个内容锚点，均为最小改动并复用 app 自己的�
 | 文件 | 用途 |
 | --- | --- |
 | `ShuDong.dylib` | 裸 dylib（TrollFools 注入用，需要已脱壳的 app） |
-| `ShuDong_1.0.3_iphoneos-arm64e.deb` | **roothide Dopamine**（推荐） |
-| `ShuDong_1.0.3_iphoneos-arm64.deb` | rootless Dopamine / ElleKit（`/var/jb`） |
+| `ShuDong_1.0.4_iphoneos-arm64e.deb` | **roothide Dopamine**（推荐） |
+| `ShuDong_1.0.4_iphoneos-arm64.deb` | rootless Dopamine / ElleKit（`/var/jb`） |
 
 打 `v*` tag 会同时发一个 Release。
 
@@ -87,9 +87,9 @@ bash build.sh          # 输出 build/ 下的 dylib 与两个 deb
 
 ```bash
 # roothide Dopamine
-dpkg -i ShuDong_1.0.3_iphoneos-arm64e.deb
+dpkg -i ShuDong_1.0.4_iphoneos-arm64e.deb
 # rootless
-dpkg -i ShuDong_1.0.3_iphoneos-arm64.deb
+dpkg -i ShuDong_1.0.4_iphoneos-arm64.deb
 ```
 
 也可以直接用 Sileo/Zebra「从文件安装」。装完 postinst 会清掉旧缓存并 `killall -9 whou`，
@@ -156,4 +156,4 @@ build.sh                     编译脚本（clang + lipo + ldid + dpkg-deb）
 .github/workflows/build.yml  GitHub Actions 编译流程
 ```
 
-针对树洞 2.2.965 验证；仅供个人学习与自用。当前补丁版本为 7，deb 版本为 1.0.3。
+针对树洞 2.2.965 验证；仅供个人学习与自用。当前补丁版本为 8，deb 版本为 1.0.4。
