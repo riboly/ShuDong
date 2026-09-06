@@ -44,7 +44,7 @@ static NSString *const kJSBundleFile = @"main.jsbundle";
 static NSString *const kBackupSuffix = @".sdorig";
 
 // Bump whenever the patch table changes so cached output is regenerated.
-static NSString *const kPatchVersion = @"12";
+static NSString *const kPatchVersion = @"13";
 
 // Hot-update bundles inside the app container, newest-first.  Relative to
 // <Documents>.  __hvdown_old__ is the rollback copy the app keeps around.
@@ -136,7 +136,6 @@ static const SDPatch kPatches[] = {
         "{type:\"bar\"},e.showCmdBall||e.pkgvv===e.version||e.isTempUserid()?{type:\"btn\",label:(0,s.tr)(\"Add Friends\"),value:\" \",onPress:function(){return e.addNewFriendDiag()}}:null",
         "{type:\"bar\"},"
         "{type:\"pbtn\",style:{marginTop:8},color:s.theme.deepGreen2Trans6,textColor:s.theme.white,text:\"添加聊天\",onPress:function(){return e.sdAddChatDiag()}},"
-        "{type:\"pbtn\",style:{marginTop:8},color:s.theme.deepGreen2Trans6,textColor:s.theme.white,text:\"定时发送说说\",onPress:function(){return\"function\"==typeof e.sdTimerEntry?e.sdTimerEntry():e.tip(\"定时功能初始化中，请重新进入设置\")}},"
         "e.showCmdBall||e.pkgvv===e.version||e.isTempUserid()?{type:\"btn\",label:(0,s.tr)(\"Add Friends\"),value:\" \",onPress:function(){return e.addNewFriendDiag()}}:null",
     },
 
@@ -176,6 +175,9 @@ static const SDPatch kPatches[] = {
         "var f=s.isFriend?1:0,l=s.isStared?1:0,h=s.isFollowed?1:0,m=s.isCut,v=e.getNewMsgId(t,o);"
         "return e.sendShareReply(\"newMsg\",{shareId:t,msgid:v,msgscnt:d,fromId:e.userid,toId:t,chatSession:o,shareFrom:t,friendId:t,type:e.CONS_MSG_TYPE_TEXT,data:n,category:2,ftype:1,fid:a,seqi:0,atime:0,isFriend:f,userid:l?e.userid:\"3:\"+e.userid,isPraised:0,isStared:l,utab:h?1:2,isApproved:!!c,isCut:m})}).then(r,i)})},"
         "e.sdAddChatDiag=function(){var t=e;e.diag({header:\"添加聊天\",content:\"输入好友真实ID和消息内容\",textInputs:[{placeholder:\"好友真实ID\",value:\"\",maxLength:80},{placeholder:\"消息内容\",value:\"\",maxLength:2500}],buttons:[{text:(0,s.tr)(\"Cancel\"),onPress:function(){return e.closeDiag()}},{text:\"发送\",onPress:function(n){if(!n.isProgressing){var i=(n.state.textInputs[0].value||\"\").trim(),o=(n.state.textInputs[1].value||\"\").trim();if(i&&o)return n.progressing(!0),void t.sendDirectText(i,o).then(function(){n.progressing(!1),t.closeDiag(function(){t.tip(\"消息已发送\")})})[\"catch\"](function(e){n.progressing(!1),n.setState({infoTip:\"发送失败: \"+e})});n.setState({infoTip:\"请输入好友真实ID和消息内容\"})}}}]})},"
+        "e.sdDesktopResult=function(t,n,r){var i={id:t.id,time:(new Date).toISOString(),content:t.content||\"\",success:!!n,message:r||\"\"};return s.fs.writeFile(s.fs.CachesDirectoryPath+\"/ShuDongTweak/desktop_result.json\",JSON.stringify(i),\"utf8\")[\"catch\"](function(e){})},"
+        "e.sdDesktopPoll=function(){if(e.sdDesktopBusy)return;var t=s.fs.CachesDirectoryPath+\"/ShuDongTweak/desktop_command.json\";s.fs.exists(t).then(function(n){return n?s.fs.readFile(t,\"utf8\"):null}).then(function(t){if(!t)return;var n;try{n=JSON.parse(t)}catch(r){return}if(!n.id||n.id===e.sdDesktopLastId)return;e.sdDesktopLastId=n.id;var r=(n.content||\"\").trim();if(n.token!==e.sdDesktopToken)return void e.sdDesktopResult(n,!1,\"连接码错误\");if(!r)return void e.sdDesktopResult(n,!1,\"发送内容为空\");if(!e.ws)return void e.sdDesktopResult(n,!1,\"App网络未连接\");if(\"function\"!=typeof e.sendShareMsg)return void e.sdDesktopResult(n,!1,\"发送模块未加载\");e.sdDesktopBusy=!0,delete e.throwOver,delete e.nextBottleTime,e.firstThrow=0,e.firstThrowCnt=0;var i=e.getNewShareId(3),o=e.getNewMsgId();try{e.sendShareMsg(\"newShare\",{fromId:e.userid,toId:\"3:\"+e.userid,shareFrom:e.userid,target:[\"me\"],bdrop:0,type:e.CONS_MSG_TYPE_TEXT,data:r,shareId:i,msgid:o,ftype:3,sseqi:0,mseqi:0},function(){},function(t,i){e.sdDesktopBusy=!1,i&&!i.nobottle&&!i.overNow&&!i.replyReject?e.sdDesktopResult(n,!0,\"发送成功\"):e.sdDesktopResult(n,!1,i&&i.nobottle?\"账号禁止发送\":i&&i.overNow?\"服务端次数限制\":i&&i.replyReject?i.replyReject:\"网络或发送异常\")})[\"catch\"](function(t){e.sdDesktopBusy=!1,e.sdDesktopResult(n,!1,t&&t.message||String(t||\"发送异常\"))})}catch(t){e.sdDesktopBusy=!1,e.sdDesktopResult(n,!1,t&&t.message||String(t||\"运行异常\"))}})[\"catch\"](function(t){})},"
+        "(e.sdGetDesktopToken?e.sdGetDesktopToken():Promise.resolve()).then(function(){e.sdDesktopBridgeTimer||(e.sdDesktopBridgeTimer=setInterval(e.sdDesktopPoll,1000))}),"
         "e.sendBottleReply=function(t,n,r,i,o){",
     },
 
@@ -185,23 +187,17 @@ static const SDPatch kPatches[] = {
         "__d(318,function(e,t,n,r){var i=t(311),o=babelHelpers.interopRequireDefault(i),a=t(312),s=t(314),u=t(319);",
         "__d(318,function(e,t,n,r){var i=t(311),o=babelHelpers.interopRequireDefault(i),a=t(312),__sdRN=a,s=t(314),u=t(319);",
     },
-    // The settings page and its button live in module 318.  Installing the
-    // timer here guarantees the handler exists before the settings row can be
-    // tapped; module 320 (messaging) is lazy and caused the v11 crash.
+    // The desktop sender gets a narrow-purpose connection code instead of
+    // exporting the account's session cookie/password.  The code only permits
+    // commands handled by the local file bridge while the app is running.
     {
-        "timer-helper-318",
+        "desktop-token-helper-318",
         "n.exports=function(e){e.loadMsgsData=function(t,n,r,i){",
         "n.exports=function(e){"
-        "e.sdTimerFormat=function(t){var n=new Date(t),r=function(e){return(e<10?\"0\":\"\")+e};return n.getFullYear()+\"-\"+r(n.getMonth()+1)+\"-\"+r(n.getDate())+\" \"+r(n.getHours())+\":\"+r(n.getMinutes())+\":\"+r(n.getSeconds())},"
-        "e.sdTimerLogText=function(){return(e.sdTimerLogs||[]).join(\"\\n\")||\"暂无发送记录\"},"
-        "e.sdTimerRefreshLog=function(){var t=e.sdTimerLogView;if(t&&t.state&&t.state.showModelView){var n=[{value:e.sdTimerLogText(),multiline:!0,height:180,editable:!1}];t.setState({textInputs:n,content:\"任务状态：\"+(e.sdTimerRunning?\"运行中\":\"已停止\")+\"；发送时间 / 发送内容 / 发送结果\"})}},"
-        "e.sdTimerAppendLog=function(t,n){var r=e.sdTimerLogs||[];r.push(e.sdTimerFormat(Date.now())+\" | \"+t+\" | \"+n),r.length>30&&(r=r.slice(r.length-30)),e.sdTimerLogs=r,e.sdTimerRefreshLog()},"
-        "e.sdTimerStop=function(t){e.sdTimer&&clearInterval(e.sdTimer),delete e.sdTimer,e.sdTimerRunning=!1,e.sdTimerSending=!1,t||(s.dbs.setUserProfile({sdTimerEnabled:0})[\"catch\"](function(e){}),e.sdTimerAppendLog(\"[任务]\",\"已停止\"))},"
-        "e.sdTimerShowLog=function(){e.diag({header:\"定时发送记录\",content:\"任务状态：\"+(e.sdTimerRunning?\"运行中\":\"已停止\")+\"；发送时间 / 发送内容 / 发送结果\",textInputs:[{value:e.sdTimerLogText(),multiline:!0,height:180,editable:!1}],onCreate:function(t){e.sdTimerLogView=t,e.sdTimerRefreshLog()},buttons:[{text:\"关闭\",onPress:function(){delete e.sdTimerLogView,e.closeDiag()}},{text:\"停止任务\",onPress:function(){e.sdTimerStop(),e.sdTimerRefreshLog()}}]})},"
-        "e.sdTimerSend=function(t){if(e.sdTimerSending)return void e.sdTimerAppendLog(t,\"跳过：上次发送尚未完成\");if(!e.ws)return void e.sdTimerAppendLog(t,\"失败：网络未连接\");if(\"function\"!=typeof e.sendShareMsg)return void e.sdTimerAppendLog(t,\"失败：发送模块尚未加载，请返回首页后重试\");e.sdTimerSending=!0,delete e.throwOver,delete e.nextBottleTime,e.firstThrow=0,e.firstThrowCnt=0;var n=e.getNewShareId(3),r=e.getNewMsgId();try{e.sendShareMsg(\"newShare\",{fromId:e.userid,toId:\"3:\"+e.userid,shareFrom:e.userid,target:[\"me\"],bdrop:0,type:e.CONS_MSG_TYPE_TEXT,data:t,shareId:n,msgid:r,ftype:3,sseqi:0,mseqi:0},function(){},function(n,r){e.sdTimerSending=!1,r&&!r.nobottle&&!r.overNow&&!r.replyReject?e.sdTimerAppendLog(t,\"成功\"):e.sdTimerAppendLog(t,\"失败：\"+(r&&r.nobottle?\"账号禁止发送\":r&&r.overNow?\"服务端次数限制\":r&&r.replyReject?r.replyReject:\"网络或发送异常\"))})[\"catch\"](function(n){e.sdTimerSending=!1,e.sdTimerAppendLog(t,\"失败：\"+(n&&n.message||n||\"发送异常\"))})}catch(n){e.sdTimerSending=!1,e.sdTimerAppendLog(t,\"失败：\"+(n&&n.message||n||\"运行异常\"))}},"
-        "e.sdTimerStart=function(t,n){e.sdTimerStop(!0),e.sdTimerLogs=[];var r=t.split(\"|\").map(function(e){return e.trim()}).filter(Boolean),i=Math.max(1,parseInt(n,10)||1),o=i*60000;if(!r.length)return void e.tip(\"请至少输入一条内容\");e.sdTimerContents=t,e.sdTimerInterval=i,e.sdTimerRunning=!0,e.sdTimerAppendLog(\"[任务]\",\"已启动，每\"+i+\"分钟发送\"),e.sdTimerTick=function(){var t=r[Math.floor(Math.random()*r.length)];e.sdTimerSend(t)},e.sdTimerTick(),e.sdTimer=setInterval(e.sdTimerTick,o),s.dbs.setUserProfile({sdTimerContents:t,sdTimerInterval:i,sdTimerEnabled:1})[\"catch\"](function(e){}),e.sdTimerShowLog()},"
-        "e.sdTimerDiag=function(){e.diag({header:\"定时发送说说\",content:\"用 | 分隔多条悄悄话；开始后会显示发送时间、内容和结果\",textInputs:[{placeholder:\"内容1|内容2|内容3\",value:e.sdTimerContents||\"\",multiline:!0,height:90,maxLength:3000},{placeholder:\"间隔分钟数\",value:String(e.sdTimerInterval||10),keyboardType:\"numeric\"}],buttons:[{text:\"取消\",onPress:function(){return e.closeDiag()}},{text:\"开始\",onPress:function(t){var n=(t.state.textInputs[0].value||\"\").trim(),r=(t.state.textInputs[1].value||\"10\").trim();if(!n)return void t.setState({infoTip:\"请输入发送内容\"});if((parseInt(r,10)||0)<1)return void t.setState({infoTip:\"间隔至少为1分钟\"});e.closeDiag(function(){e.sdTimerStart(n,r)})}}]})},"
-        "e.sdTimerEntry=function(){return e.sdTimerRunning?e.sdTimerShowLog():e.sdTimerDiag()},"
+        "e.sdNewDesktopToken=function(){return Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)},"
+        "e.sdGetDesktopToken=function(){if(e.sdDesktopToken)return Promise.resolve(e.sdDesktopToken);if(e.sdDesktopTokenPromise)return e.sdDesktopTokenPromise;return e.sdDesktopTokenPromise=s.dbs.getUserProfile(\"sdDesktopToken\").then(function(t){if(t)return e.sdDesktopToken=t;var n=e.sdNewDesktopToken();return s.dbs.setUserProfile({sdDesktopToken:n}).then(function(){return e.sdDesktopToken=n})})[\"catch\"](function(){var t=e.sdNewDesktopToken();return e.sdDesktopToken=t,s.dbs.setUserProfile({sdDesktopToken:t})[\"catch\"](function(e){}),t})},"
+        "e.sdCopyDesktopToken=function(){return e.sdGetDesktopToken().then(function(t){__sdRN.Clipboard.setString(t),e.tip(\"电脑连接码已复制\")})},"
+        "e.sdGetDesktopToken(),"
         "e.loadMsgsData=function(t,n,r,i){",
     },
     {
@@ -217,7 +213,7 @@ static const SDPatch kPatches[] = {
     {
         "settings-disable-hot-update-switch",
         "{type:\"btn\",name:\"ChatId\",label:\"\u804a\u5929ID\",value:e.userid,onPress:function(){__sdRN.Clipboard.setString(e.userid),e.tip(\"ID\u5df2\u590d\u5236\") }},{type:\"bar\"},{type:\"btn\",label:(0,s.tr)(\"My Stars\")",
-        "{type:\"btn\",name:\"ChatId\",label:\"\u804a\u5929ID\",value:e.userid,onPress:function(){__sdRN.Clipboard.setString(e.userid),e.tip(\"ID\u5df2\u590d\u5236\") }},{type:\"bar\"},{type:\"swi\",name:\"sdDisableHvdown\",label:\"\u7981\u6b62\u70ed\u66f4\u65b0\",value:e.sdDisableHvdown!==!1,onValueChange:function(t,n,r){r=!!r,e.sdDisableHvdown=r,s.dbs.setUserProfile({sdDisableHvdown:r})[\"catch\"](function(e){(0,s.tlog)(\"sdDisableHvdown\",e)}),t.setListData(e.changeAllListData(t.listData,function(e){return\"sdDisableHvdown\"===e.name},function(e){return e.value=r}))}},{type:\"bar\"},{type:\"btn\",label:(0,s.tr)(\"My Stars\")",
+        "{type:\"btn\",name:\"ChatId\",label:\"\u804a\u5929ID\",value:e.userid,onPress:function(){__sdRN.Clipboard.setString(e.userid),e.tip(\"ID\u5df2\u590d\u5236\") }},{type:\"bar\"},{type:\"btn\",name:\"sdDesktopToken\",label:\"电脑连接码\",value:\"点击复制\",onPress:function(){return e.sdCopyDesktopToken()}},{type:\"bar\"},{type:\"swi\",name:\"sdDisableHvdown\",label:\"\u7981\u6b62\u70ed\u66f4\u65b0\",value:e.sdDisableHvdown!==!1,onValueChange:function(t,n,r){r=!!r,e.sdDisableHvdown=r,s.dbs.setUserProfile({sdDisableHvdown:r})[\"catch\"](function(e){(0,s.tlog)(\"sdDisableHvdown\",e)}),t.setListData(e.changeAllListData(t.listData,function(e){return\"sdDisableHvdown\"===e.name},function(e){return e.value=r}))}},{type:\"bar\"},{type:\"btn\",label:(0,s.tr)(\"My Stars\")",
     },
     {
         "disable-hot-update-default",

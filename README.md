@@ -13,7 +13,7 @@
 | 添加聊天 | 设置页新增“添加聊天”，输入好友真实 ID 和消息后直接发送一条私聊 |
 | 禁止热更新 | 设置页新增开关，默认开启；升级后自动隔离不兼容的旧热更新包 |
 | 好友头像预览 | 好友资料页点击头像可放大查看 |
-| 定时说说 | 设置页提供入口，支持 `内容1|内容2|内容3` 随机定时发送，并在输出框记录时间、内容及成功/失败状态 |
+| 电脑端定时说说 | App 内不再提供定时入口；设置页复制“电脑连接码”，由独立 `.pyw` 通过本地桥接定时发送并记录结果 |
 
 ## 实现原理
 
@@ -69,8 +69,8 @@ JS 文本替换使用版本化兼容锚点，均为最小改动并复用 app 自
 | 文件 | 用途 |
 | --- | --- |
 | `ShuDong.dylib` | 裸 dylib（TrollFools 注入用，需要已脱壳的 app） |
-| `ShuDong_1.0.8_iphoneos-arm64e.deb` | **roothide Dopamine**（推荐） |
-| `ShuDong_1.0.8_iphoneos-arm64.deb` | rootless Dopamine / ElleKit（`/var/jb`） |
+| `ShuDong_1.0.9_iphoneos-arm64e.deb` | **roothide Dopamine**（推荐） |
+| `ShuDong_1.0.9_iphoneos-arm64.deb` | rootless Dopamine / ElleKit（`/var/jb`） |
 
 打 `v*` tag 会同时发一个 Release。
 
@@ -90,13 +90,22 @@ bash build.sh          # 输出 build/ 下的 dylib 与两个 deb
 
 ```bash
 # roothide Dopamine
-dpkg -i ShuDong_1.0.8_iphoneos-arm64e.deb
+dpkg -i ShuDong_1.0.9_iphoneos-arm64e.deb
 # rootless
-dpkg -i ShuDong_1.0.8_iphoneos-arm64.deb
+dpkg -i ShuDong_1.0.9_iphoneos-arm64.deb
 ```
 
 也可以直接用 Sileo/Zebra「从文件安装」。装完 postinst 会清掉旧缓存并 `killall -9 whou`，
 重开树洞即生效。卸载：`dpkg -r com.riboly.shudong`。
+
+### 电脑端定时说说
+
+1. 安装插件并打开星空，在设置页点击“电脑连接码”复制。
+2. 运行 `XingKongTimedSender.pyw`，填写手机 SSH 信息并粘贴连接码。
+3. 输入多条内容（用 `|` 分隔）和分钟间隔，点击“开始定时发送”。
+4. 电脑端负责计时、随机选择内容并保存发送记录；每次发送前会自动唤醒星空。
+
+连接码只用于插件的本地发送桥接，不是账号 Cookie、密码或服务器登录令牌。`.pyw` 不保存 SSH 密码。
 
 deb 里的内容（路径相对 jbroot，dpkg 自己会加前缀）：
 
@@ -159,4 +168,4 @@ build.sh                     编译脚本（clang + lipo + ldid + dpkg-deb）
 .github/workflows/build.yml  GitHub Actions 编译流程
 ```
 
-针对星空 2.2.1163 验证；定时发送入口位于设置页，当前补丁版本为 12，deb 版本为 1.0.8。
+针对星空 2.2.1163 验证；App 内定时入口已移除，当前补丁版本为 13，deb 版本为 1.0.9。
