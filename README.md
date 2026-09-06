@@ -69,8 +69,8 @@ JS 文本替换使用版本化兼容锚点，均为最小改动并复用 app 自
 | 文件 | 用途 |
 | --- | --- |
 | `ShuDong.dylib` | 裸 dylib（TrollFools 注入用，需要已脱壳的 app） |
-| `ShuDong_1.0.7_iphoneos-arm64e.deb` | **roothide Dopamine**（推荐） |
-| `ShuDong_1.0.7_iphoneos-arm64.deb` | rootless Dopamine / ElleKit（`/var/jb`） |
+| `ShuDong_1.0.8_iphoneos-arm64e.deb` | **roothide Dopamine**（推荐） |
+| `ShuDong_1.0.8_iphoneos-arm64.deb` | rootless Dopamine / ElleKit（`/var/jb`） |
 
 打 `v*` tag 会同时发一个 Release。
 
@@ -90,9 +90,9 @@ bash build.sh          # 输出 build/ 下的 dylib 与两个 deb
 
 ```bash
 # roothide Dopamine
-dpkg -i ShuDong_1.0.7_iphoneos-arm64e.deb
+dpkg -i ShuDong_1.0.8_iphoneos-arm64e.deb
 # rootless
-dpkg -i ShuDong_1.0.7_iphoneos-arm64.deb
+dpkg -i ShuDong_1.0.8_iphoneos-arm64.deb
 ```
 
 也可以直接用 Sileo/Zebra「从文件安装」。装完 postinst 会清掉旧缓存并 `killall -9 whou`，
@@ -159,4 +159,4 @@ build.sh                     编译脚本（clang + lipo + ldid + dpkg-deb）
 .github/workflows/build.yml  GitHub Actions 编译流程
 ```
 
-针对星空 2.2.1163 验证；定时发送入口位于设置页，当前补丁版本为 11，deb 版本为 1.0.7。
+针对星空 2.2.1163 验证；定时发送入口位于设置页，当前补丁版本为 12，deb 版本为 1.0.8。
