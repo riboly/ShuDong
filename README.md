@@ -1,6 +1,6 @@
 # ShuDong 增强插件
 
-给 iOS 应用 **树洞**（bundle id `co.whou.pick`）的增强插件，编译产物为 `ShuDong.dylib`，
+给 iOS 应用 **星空（原树洞）**（bundle id `co.whou.pick`）的增强插件，编译产物为 `ShuDong.dylib`，
 由 GitHub Actions 在 macOS runner 上用 iphoneos SDK 编译（arm64 + arm64e，ldid 临时签名）。
 
 ## 功能
@@ -11,6 +11,9 @@
 | 好友个人信息显示完整 id | 好友列表不再显示 ID；进入好友个人信息页可查看完整“用户ID”，点击 ID 即复制 |
 | 设置页显示本账号聊天 ID | 账号下面新增“聊天ID”，点击 ID 即复制；其他账号可用此 ID 通过“添加聊天”发起私聊 |
 | 添加聊天 | 设置页新增“添加聊天”，输入好友真实 ID 和消息后直接发送一条私聊 |
+| 禁止热更新 | 设置页新增开关，默认开启；升级后自动隔离不兼容的旧热更新包 |
+| 好友头像预览 | 好友资料页点击头像可放大查看 |
+| 定时说说 | 支持 `内容1|内容2|内容3` 随机定时发送，并在输出框记录时间、内容及成功/失败状态 |
 
 ## 实现原理
 
@@ -37,7 +40,7 @@
    `+[NSFileHandle fileHandleForReadingFromURL:error:]`、`+[NSFileHandle fileHandleForReadingAtPath:]`、
    `+[NSString stringWithContentsOfFile:encoding:error:]`。
 
-JS 文本替换（11 个内容锚点，均为最小改动并复用 app 自己的机制）：
+JS 文本替换使用版本化兼容锚点，均为最小改动并复用 app 自己的机制：
 
 - 列表数据源 `cloneWithRows(...)` 外面套一层 `.filter(row => row.friendId !== "-1")`；
 - 列表行移除旧版本可能写入的 `NameText appends` 好友 ID 后缀，首页仅显示昵称。
@@ -66,8 +69,8 @@ JS 文本替换（11 个内容锚点，均为最小改动并复用 app 自己的
 | 文件 | 用途 |
 | --- | --- |
 | `ShuDong.dylib` | 裸 dylib（TrollFools 注入用，需要已脱壳的 app） |
-| `ShuDong_1.0.5_iphoneos-arm64e.deb` | **roothide Dopamine**（推荐） |
-| `ShuDong_1.0.5_iphoneos-arm64.deb` | rootless Dopamine / ElleKit（`/var/jb`） |
+| `ShuDong_1.0.6_iphoneos-arm64e.deb` | **roothide Dopamine**（推荐） |
+| `ShuDong_1.0.6_iphoneos-arm64.deb` | rootless Dopamine / ElleKit（`/var/jb`） |
 
 打 `v*` tag 会同时发一个 Release。
 
@@ -87,9 +90,9 @@ bash build.sh          # 输出 build/ 下的 dylib 与两个 deb
 
 ```bash
 # roothide Dopamine
-dpkg -i ShuDong_1.0.5_iphoneos-arm64e.deb
+dpkg -i ShuDong_1.0.6_iphoneos-arm64e.deb
 # rootless
-dpkg -i ShuDong_1.0.5_iphoneos-arm64.deb
+dpkg -i ShuDong_1.0.6_iphoneos-arm64.deb
 ```
 
 也可以直接用 Sileo/Zebra「从文件安装」。装完 postinst 会清掉旧缓存并 `killall -9 whou`，
@@ -156,4 +159,4 @@ build.sh                     编译脚本（clang + lipo + ldid + dpkg-deb）
 .github/workflows/build.yml  GitHub Actions 编译流程
 ```
 
-针对树洞 2.2.965 验证；仅供个人学习与自用。当前补丁版本为 9，deb 版本为 1.0.5。
+针对星空 2.2.1163 验证；当前补丁版本为 10，deb 版本为 1.0.6。

@@ -44,7 +44,7 @@ static NSString *const kJSBundleFile = @"main.jsbundle";
 static NSString *const kBackupSuffix = @".sdorig";
 
 // Bump whenever the patch table changes so cached output is regenerated.
-static NSString *const kPatchVersion = @"9";
+static NSString *const kPatchVersion = @"10";
 
 // Hot-update bundles inside the app container, newest-first.  Relative to
 // <Documents>.  __hvdown_old__ is the rollback copy the app keeps around.
@@ -165,6 +165,47 @@ static const SDPatch kPatches[] = {
         "direct-chat-helper",
         "e.sendBottleReply=function(t,n,r,i,o){",
         "e.sendDirectText=function(t,n){return new Promise(function(r,i){t=(t||\"\").trim(),n=(n||\"\").trim();if(!t||!n)return void i(\"empty\");var o=e.getChatSession(t,e.userid),a=e.getFid(t,e.userid,o);Promise.all([e.getRelationShip(t),e.getProfileK(t,\"forbid\"),e.getMsgscnt(t,e.userid),e.isPeopleApproved(t)]).then(function(i){var s=i[0]||{},u=i[1]||e.CONS_FORBID_NORMAL,d=i[2],c=i[3];if(e.isUserForbided(u))throw\"forbidden\";if(s.blocked)throw\"blocked\";var f=s.isFriend?1:0,l=s.isStared?1:0,h=s.isFollowed?1:0,m=s.isCut,v=e.getNewMsgId(t,o);return e.sendShareReply(\"newMsg\",{shareId:t,msgid:v,msgscnt:d,fromId:e.userid,toId:t,chatSession:o,shareFrom:t,friendId:t,type:e.CONS_MSG_TYPE_TEXT,data:n,category:2,ftype:1,fid:a,seqi:0,atime:0,isFriend:f,userid:l?e.userid:\"3:\"+e.userid,isPraised:0,isStared:l,utab:h?1:2,isApproved:!!c,isCut:m})}).then(r,i)})},e.sdAddChatDiag=function(){var t=e; e.diag({header:\"添加聊天\",content:\"输入好友真实ID和消息内容\",textInputs:[{placeholder:\"好友真实ID\",value:\"\",maxLength:80},{placeholder:\"消息内容\",value:\"\",maxLength:2500}],buttons:[{text:(0,s.tr)(\"Cancel\"),onPress:function(){return e.closeDiag()}},{text:\"发送\",onPress:function(n){if(!n.isProgressing){var i=(n.state.textInputs[0].value||\"\").trim(),o=(n.state.textInputs[1].value||\"\").trim();if(i&&o)return n.progressing(!0),void t.sendDirectText(i,o).then(function(){n.progressing(!1),t.closeDiag(function(){t.tip(\"消息已发送\")})})[\"catch\"](function(e){n.progressing(!1),n.setState({infoTip:\"发送失败: \"+e})});n.setState({infoTip:\"请输入好友真实ID和消息内容\"})}}}]})},e.sendBottleReply=function(t,n,r,i,o){",
+
+
+    {
+        "capture-rn-module-318",
+        "__d(318,function(e,t,n,r){var i=t(311),o=babelHelpers.interopRequireDefault(i),a=t(312),s=t(314),u=t(319);",
+        "__d(318,function(e,t,n,r){var i=t(311),o=babelHelpers.interopRequireDefault(i),a=t(312),__sdRN=a,s=t(314),u=t(319);",
+    },
+    {
+        "profile-friend-avatar-1163",
+        "{type:\"myAvatar\",userid:t,onPress:function(n){t===e.userid&&e.changeMyAvatar(n)},label:(0,s.tr)(\"Avatar\")},{type:\"bar\"}];u||c.push({type:\"btn\",label:(0,s.tr)(\"Nickname\")",
+        "{type:\"myAvatar\",userid:t,onPress:function(n){if(t===e.userid)return e.changeMyAvatar(n);return e.getProfileK(t,\"avatar\").then(function(r){/.*\\.\\w+$/.test(r)||(r+=\".jpg\"),e.emit(\"showModelImage\",{imgId:r,ratio:1,nobar:1})})},label:(0,s.tr)(\"Avatar\")},{type:\"bar\"}];u||c.push({type:\"btn\",label:(0,s.tr)(\"Nickname\")",
+    },
+    {
+        "profile-id-copy-1163",
+        "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t.slice(0,6)}",
+        "{type:\"btn\",label:(0,s.tr)(\"\\u7528\\u6237ID\"),value:t,onPress:function(){__sdRN.Clipboard.setString(t),e.tip(\"ID已复制\")}}",
+    },
+    {
+        "settings-disable-hot-update-switch",
+        "{type:\"btn\",name:\"ChatId\",label:\"\u804a\u5929ID\",value:e.userid,onPress:function(){__sdRN.Clipboard.setString(e.userid),e.tip(\"ID\u5df2\u590d\u5236\") }},{type:\"bar\"},{type:\"btn\",label:(0,s.tr)(\"My Stars\")",
+        "{type:\"btn\",name:\"ChatId\",label:\"\u804a\u5929ID\",value:e.userid,onPress:function(){__sdRN.Clipboard.setString(e.userid),e.tip(\"ID\u5df2\u590d\u5236\") }},{type:\"bar\"},{type:\"swi\",name:\"sdDisableHvdown\",label:\"\u7981\u6b62\u70ed\u66f4\u65b0\",value:e.sdDisableHvdown!==!1,onValueChange:function(t,n,r){r=!!r,e.sdDisableHvdown=r,s.dbs.setUserProfile({sdDisableHvdown:r})[\"catch\"](function(e){(0,s.tlog)(\"sdDisableHvdown\",e)}),t.setListData(e.changeAllListData(t.listData,function(e){return\"sdDisableHvdown\"===e.name},function(e){return e.value=r}))}},{type:\"bar\"},{type:\"btn\",label:(0,s.tr)(\"My Stars\")",
+    },
+    {
+        "disable-hot-update-default",
+        "apps.checkForHvdown=function(e){if(!apps.verifyVurlsFinished",
+        "apps.checkForHvdown=function(e){if(void 0===apps.sdDisableHvdown)return void _requireConfig.dbs.getUserProfile(\"sdDisableHvdown\").then(function(t){apps.sdDisableHvdown=t===!1?!1:!0,apps.checkForHvdown(e)});if(apps.sdDisableHvdown)return;if(!apps.verifyVurlsFinished",
+    },
+    {
+        "timer-helper-359",
+        "__d(359,function(e,t,i,n){var r=t(311),o=babelHelpers.interopRequireDefault(r),s=t(312),a=t(314);n.UserListView=o[\"default\"].createClass({displayName:\"UserListView\",mixins:[a.ScrollResponder.Mixin],getInitialState:function(){",
+        "__d(359,function(e,t,i,n){var r=t(311),o=babelHelpers.interopRequireDefault(r),s=t(312),a=t(314);n.UserListView=o[\"default\"].createClass({displayName:\"UserListView\",mixins:[a.ScrollResponder.Mixin],sdTimerFormat:function(e){var t=new Date(e),i=function(e){return(e<10?\"0\":\"\")+e};return t.getFullYear()+\"-\"+i(t.getMonth()+1)+\"-\"+i(t.getDate())+\" \"+i(t.getHours())+\":\"+i(t.getMinutes())+\":\"+i(t.getSeconds())},sdTimerShowLog:function(e){var t=this,i=e||this.sdTimerLogText||\"\u6682\u65e0\u53d1\u9001\u8bb0\u5f55\";a.apps.diag({header:\"\u5b9a\u65f6\u53d1\u9001\u8bb0\u5f55\",content:\"\u53d1\u9001\u65f6\u95f4 / \u53d1\u9001\u5185\u5bb9 / \u53d1\u9001\u662f\u5426\u6210\u529f\",textInputs:[{value:i,multiline:!0,height:180,editable:!1}],buttons:[{text:\"\u505c\u6b62\",onPress:function(){return t.sdTimerStop(),a.apps.closeDiag()}},{text:\"\u5173\u95ed\",onPress:function(){return a.apps.closeDiag()}}]})},sdTimerStop:function(){a.apps.sdTimer&&clearInterval(a.apps.sdTimer),delete a.apps.sdTimer,a.apps.sdTimerRunning=!1,a.dbs.setUserProfile({sdTimerEnabled:0})[\"catch\"](function(e){})},sdTimerAppendLog:function(e,t){var i=(this.sdTimerLogText||\"\").split(\"\\n\").filter(Boolean);i.push(this.sdTimerFormat(Date.now())+\" | \"+e+\" | \"+t),i.length>30&&(i=i.slice(i.length-30)),this.sdTimerLogText=i.join(\"\\n\"),this.sdTimerShowLog()},sdTimerSend:function(e){var t=this,i=a.apps;delete i.throwOver,delete i.nextBottleTime,i.firstThrow=0,i.firstThrowCnt=0;var n=i.getNewShareId(3),r=i.getNewMsgId(),o=0;i.sendShareMsg(\"newShare\",{fromId:i.userid,toId:\"3:\"+i.userid,shareFrom:i.userid,target:[\"me\"],bdrop:o,type:i.CONS_MSG_TYPE_TEXT,data:e,shareId:n,msgid:r,ftype:3,sseqi:0,mseqi:0},function(){},function(n,r){r&&!r.nobottle&&!r.overNow?t.sdTimerAppendLog(e,\"\u6210\u529f\"):t.sdTimerAppendLog(e,\"\u5931\u8d25: \"+(r&&r.nobottle?\"\u8d26\u53f7\u7981\u6b62\u53d1\u9001\":r&&r.overNow?\"\u670d\u52a1\u5668\u6b21\u6570\u9650\u5236\":\"\u7f51\u7edc\u6216\u53d1\u9001\u5f02\u5e38\"))})},sdTimerStart:function(e,t){var i=this;this.sdTimerStop(),this.sdTimerLogText=\"\";var n=Math.max(1,parseInt(t,10)||1)*60000,r=e.split(\"|\").map(function(e){return e.trim()}).filter(Boolean);if(!r.length)return void a.apps.tip(\"\u8bf7\u8f93\u5165\u81f3\u5c11\u4e00\u6761\u5185\u5bb9\");var o=function(){var e=r[Math.floor(Math.random()*r.length)];i.sdTimerSend(e)};a.apps.sdTimerContents=e,a.apps.sdTimerInterval=Math.round(n/60000),a.apps.sdTimerRunning=!0,o(),a.apps.sdTimer=setInterval(o,n),a.dbs.setUserProfile({sdTimerContents:e,sdTimerInterval:a.apps.sdTimerInterval,sdTimerEnabled:1})[\"catch\"](function(e){}),this.sdTimerShowLog()},sdTimerDiag:function(){var e=this;a.apps.diag({header:\"\u5b9a\u65f6\u4efb\u52a1\",content:\"\u7528 | \u5206\u9694\u591a\u4e2a\u6084\u6084\u8bdd\uff1b\u5f00\u59cb\u540e\u8f93\u51fa\u6846\u663e\u793a\u53d1\u9001\u65f6\u95f4\u3001\u53d1\u9001\u5185\u5bb9\u3001\u53d1\u9001\u662f\u5426\u6210\u529f\",textInputs:[{placeholder:\"\u5185\u5bb91|\u5185\u5bb92|\u5185\u5bb93\",value:a.apps.sdTimerContents||\"\",multiline:!0,height:90,maxLength:3000},{placeholder:\"\u95f4\u9694\u5206\u949f\u6570\",value:String(a.apps.sdTimerInterval||10),keyboardType:\"numeric\"}],buttons:[{text:\"\u53d6\u6d88\",onPress:function(){return a.apps.closeDiag()}},{text:\"\u5f00\u59cb\",onPress:function(t){var i=t.state.textInputs[0].value||\"\",n=t.state.textInputs[1].value||\"10\";if(!i.trim())return void t.setState({infoTip:\"\u8bf7\u8f93\u5165\u53d1\u9001\u5185\u5bb9\"});a.apps.closeDiag(function(){e.sdTimerStart(i,n)})}}]})},getInitialState:function(){",
+    },
+    {
+        "remove-local-throw-limit-359",
+        "if(i&&\"^1\"!==a.apps.userid.slice(-2)){i=!1;var r=!0}return o[\"default\"].createElement(s.TouchableOpacity,{onPress:function(){if(a.apps.ws)if",
+        "if(i&&\"^1\"!==a.apps.userid.slice(-2)){i=!1;var r=!0}i=!1,r=!1;return o[\"default\"].createElement(s.TouchableOpacity,{onPress:function(){if(a.apps.ws)if",
+    },
+    {
+        "timer-button-359",
+        "a.apps.diag({header:(0,a.tr)(\"\\u8bf4\\u8bf4\"),content:(0,a.tr)(\"\\u5411\\u661f\\u7a7a\\u8bf4\\u51fa\\u4f60\\u7684\\u6084\\u6084\\u8bdd\"),textInputs:[{placeholder:(0,a.tr)(\"\\u4f60\\u7684\\u6084\\u6084\\u8bdd...\"),value:a.apps.tmpSayIt||\"\",multiline:!0,height:150,onSelectionChange:function(){},maxLength:500}],buttons:",
+        "a.apps.diag({header:(0,a.tr)(\"\\u8bf4\\u8bf4\"),content:(0,a.tr)(\"\\u5411\\u661f\\u7a7a\\u8bf4\\u51fa\\u4f60\\u7684\\u6084\\u6084\\u8bdd\"),rightTop:{text:\"定时任务\",onPress:function(){return e.props.ctx.sdTimerDiag()}},textInputs:[{placeholder:(0,a.tr)(\"\\u4f60\\u7684\\u6084\\u6084\\u8bdd...\"),value:a.apps.tmpSayIt||\"\",multiline:!0,height:150,onSelectionChange:function(){},maxLength:500}],buttons:",
     },
 };
 
@@ -335,6 +376,46 @@ static NSString *sd_tweakCachesDir(void) {
                              withIntermediateDirectories:YES
                                               attributes:nil error:NULL];
     return dir;
+}
+
+// App 2.2.1163 can inherit an older downloaded JS bundle after an App Store
+// upgrade. That bundle uses a different Metro module map and is the direct
+// cause of the post-upgrade profile/clipboard crash. Quarantine only that
+// known-incompatible generation; a subsequently downloaded compatible bundle
+// (module 318) is left in place when the user turns hot updates back on.
+static void sd_quarantineStaleHotBundles(NSString *bundledPath, NSString *docs) {
+    NSString *mainJS = [NSString stringWithContentsOfFile:bundledPath
+                                                  encoding:NSUTF8StringEncoding
+                                                     error:NULL];
+    NSString *newProfileSignature =
+        @"__d(318,function(e,t,n,r){var i=t(311)";
+    if ([mainJS rangeOfString:newProfileSignature].location == NSNotFound) {
+        return;
+    }
+
+    NSFileManager *fm = [NSFileManager defaultManager];
+    for (size_t i = 0; i < kHotBundleCount; i++) {
+        NSString *path = [docs stringByAppendingPathComponent:kHotBundlePaths[i]];
+        NSString *hotJS = [NSString stringWithContentsOfFile:path
+                                                    encoding:NSUTF8StringEncoding
+                                                       error:NULL];
+        if (!hotJS.length ||
+            [hotJS rangeOfString:newProfileSignature].location != NSNotFound) {
+            continue;
+        }
+
+        NSString *stale = [path stringByAppendingString:@".sdstale"];
+        [fm removeItemAtPath:stale error:NULL];
+        NSError *err = nil;
+        if ([fm moveItemAtPath:path toPath:stale error:&err]) {
+            sd_appendLog([NSString stringWithFormat:
+                @"%@: quarantined incompatible pre-2.2.1163 hot bundle",
+                path.lastPathComponent]);
+        } else {
+            sd_appendLog([NSString stringWithFormat:@"%@: stale quarantine failed (%@)",
+                          path.lastPathComponent, err]);
+        }
+    }
 }
 
 // Builds (or reuses) a patched copy of a read-only source and registers a
@@ -631,6 +712,14 @@ __attribute__((constructor)) static void sd_init(void) {
             NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
         NSUInteger live = 0;
 
+        NSString *bundled = [main.resourcePath stringByAppendingPathComponent:kJSBundleFile];
+        if (![fm fileExistsAtPath:bundled]) {
+            bundled = [main pathForResource:kJSBundleName ofType:kJSBundleExt];
+        }
+        if (bundled.length) {
+            sd_quarantineStaleHotBundles(bundled, docs);
+        }
+
         // 1) The hot-updated bundles the app actually runs.  Writable, so patch
         //    them on disk before React Native gets a chance to read them.
         for (size_t i = 0; i < kHotBundleCount; i++) {
@@ -651,10 +740,6 @@ __attribute__((constructor)) static void sd_init(void) {
         }
 
         // 2) The bundled fallback inside the read-only .app.
-        NSString *bundled = [main.resourcePath stringByAppendingPathComponent:kJSBundleFile];
-        if (![fm fileExistsAtPath:bundled]) {
-            bundled = [main pathForResource:kJSBundleName ofType:kJSBundleExt];
-        }
         if (bundled.length) {
             gMainPatchedPath = sd_preparePatchedCopy(bundled, @"main.patched.jsbundle");
             if (gMainPatchedPath) {

@@ -9,6 +9,17 @@ restore_backups() {
         orig="${b%.sdorig}"
         mv -f "$b" "$orig" 2>/dev/null || true
     done
+
+    for b in /var/mobile/Containers/Data/Application/*/Documents/dbundle/*.sdstale \
+             /var/mobile/Containers/Data/Application/*/Library/___Crane_Containers/*/Documents/dbundle/*.sdstale; do
+        [ -f "$b" ] || continue
+        orig="${b%.sdstale}"
+        if [ ! -f "$orig" ]; then
+            mv -f "$b" "$orig" 2>/dev/null || true
+        else
+            rm -f "$b" 2>/dev/null || true
+        fi
+    done
 }
 
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
